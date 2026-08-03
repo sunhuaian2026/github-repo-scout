@@ -41,6 +41,7 @@ def included_files(root: Path) -> Iterator[tuple[Path, Path]]:
         if (
             rel.name == MARKER
             or rel.as_posix() == "README.md"
+            or rel.as_posix() == "install.py"
             or ".git" in rel.parts
             or rel.parts[0] == "maintenance"
             or "__pycache__" in rel.parts
@@ -74,9 +75,13 @@ def read_marker(path: Path) -> dict[str, str] | None:
 def status(source: Path, target: Path) -> str:
     if not target.exists():
         return "missing"
-    if not target.is_dir() or read_marker(target) is None:
+    marker = read_marker(target)
+    if not target.is_dir() or marker is None:
         return "unmanaged"
-    return "ok" if tree_hash(source) == tree_hash(target) else "drift"
+    target_hash = tree_hash(target)
+    if marker.get("content_sha256") != target_hash:
+        return "drift"
+    return "ok" if tree_hash(source) == target_hash else "outdated"
 
 
 @contextmanager
@@ -100,12 +105,19 @@ def directory_lock(parent: Path) -> Iterator[None]:
 def stage_copy(source: Path, target: Path) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = Path(tempfile.mkdtemp(prefix=f".{SKILL_NAME}.stage-", dir=target.parent))
+
+    def ignore_stage_files(directory: str, names: list[str]) -> set[str]:
+        ignored = set(shutil.ignore_patterns(".git", "maintenance", "README.md", "__pycache__", "*.pyc", MARKER)(directory, names))
+        if Path(directory).resolve() == source.resolve() and "install.py" in names:
+            ignored.add("install.py")
+        return ignored
+
     try:
         shutil.copytree(
             source,
             staged,
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(".git", "maintenance", "README.md", "__pycache__", "*.pyc", MARKER),
+            ignore=ignore_stage_files,
         )
         marker = {
             "schema_version": "1.2",

@@ -27,9 +27,48 @@
 python3 scripts/github_repos.py doctor
 ```
 
-## 安装到三个 Agent
+## 快速安装
 
 在本仓库根目录执行：
+
+```bash
+python3 install.py
+```
+
+安装器会检测本机已有的 Hermes Agent、Codex CLI 和 Claude Code，只安装到已检测到的 Agent；不存在的目标显示 `skipped`，不会创建无效目录。
+
+指定单个 Agent：
+
+```bash
+python3 install.py --agent hermes
+python3 install.py --agent codex
+python3 install.py --agent claude
+```
+
+显式指定的 Agent 不存在时，安装器会报错。确实需要提前部署目录时，使用：
+
+```bash
+python3 install.py --agent hermes --allow-missing-agent
+```
+
+检查和卸载：
+
+```bash
+python3 install.py --check
+python3 install.py --uninstall --agent hermes
+```
+
+默认路径：
+
+| Agent | 路径 |
+|---|---|
+| Hermes Agent | `~/.hermes/skills/research/github-repo-scout/` |
+| Codex CLI | `~/.agents/skills/github-repo-scout/` |
+| Claude Code | `~/.claude/skills/github-repo-scout/` |
+
+## 维护者验证与高级管理
+
+发布或排错时再运行完整验证、预览和受管副本检查：
 
 ```bash
 python3 maintenance/validate.py --smoke
@@ -37,14 +76,6 @@ python3 maintenance/manage_skill.py plan --platform all
 python3 maintenance/manage_skill.py install --platform all
 python3 maintenance/manage_skill.py check --platform all
 ```
-
-默认安装到：
-
-| Agent | 路径 |
-|---|---|
-| Hermes Agent | `~/.hermes/skills/research/github-repo-scout/` |
-| Codex CLI | `~/.agents/skills/github-repo-scout/` |
-| Claude Code | `~/.claude/skills/github-repo-scout/` |
 
 管理器拒绝覆盖非托管同名目录，并用内容哈希检查副本漂移。详细机制见 [`maintenance/platform-support.md`](maintenance/platform-support.md)。
 

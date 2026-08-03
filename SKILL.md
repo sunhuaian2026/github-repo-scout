@@ -5,7 +5,7 @@ license: MIT
 compatibility: Hermes Agent, Codex CLI, Claude Code；需要 Python 3.9+、GitHub CLI gh 和 GitHub 网络访问。
 metadata:
   author: Sun Hongjun (sunerpang)
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # GitHub Repo Scout

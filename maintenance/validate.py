@@ -67,8 +67,12 @@ def validate_static() -> list[str]:
         errors.append("compatibility must not exceed 500 characters")
     if frontmatter.get("license") != "MIT" or not (ROOT / "LICENSE").is_file():
         errors.append("MIT license field and bundled LICENSE are required")
-    if "version: \"2.2.0\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.2.0")
+    if not (ROOT / "install.py").is_file():
+        errors.append("root install.py entrypoint is required")
+    if "python3 install.py" not in (ROOT / "README.md").read_text(encoding="utf-8"):
+        errors.append("README must document the one-command installer")
+    if "version: \"2.2.1\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.2.1")
     if len(text.splitlines()) > 500:
         errors.append("SKILL.md exceeds 500 lines")
 
@@ -95,7 +99,15 @@ def validate_smoke() -> list[str]:
     if help_result.returncode != 0:
         errors.append(f"collector --help failed: {help_result.stderr.strip()}")
 
-    tests = run([sys.executable, str(ROOT / "maintenance" / "test_github_repos.py")])
+    tests = run(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            str(ROOT / "maintenance" / "test_github_repos.py"),
+            str(ROOT / "maintenance" / "test_installer.py"),
+        ]
+    )
     if tests.returncode != 0:
         errors.append(f"adaptive search tests failed: {(tests.stderr or tests.stdout).strip()}")
 

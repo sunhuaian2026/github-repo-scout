@@ -14,6 +14,14 @@
 
 ## 部署
 
+普通用户使用一键入口：
+
+```bash
+python3 install.py
+```
+
+维护者使用完整流程：
+
 ```bash
 python3 maintenance/validate.py
 python3 maintenance/validate.py --smoke
@@ -23,7 +31,7 @@ python3 maintenance/manage_skill.py check --platform all
 python3 maintenance/manage_skill.py uninstall --platform all
 ```
 
-管理器永不覆盖非托管同名目录。受管副本发生漂移时默认停止；检查差异后可显式使用 `--accept-drift` 覆盖或卸载。卸载只处理带管理标记的副本。
+管理器状态包括 `ok`、`outdated`、`missing`、`unmanaged` 和 `drift`。`outdated` 表示受管副本未被用户修改、但 canonical 已更新，可以直接升级；`drift` 表示运行副本内容与管理标记不一致，默认停止。检查差异后可显式使用 `--accept-drift` 覆盖或卸载。管理器永不覆盖非托管同名目录，卸载只处理带管理标记的副本。
 
 ## 验收矩阵
 
