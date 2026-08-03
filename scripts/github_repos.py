@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic GitHub evidence collector for find-github-repos."""
+"""Deterministic GitHub evidence collector for github-repo-scout."""
 
 from __future__ import annotations
 
@@ -24,6 +24,9 @@ MANIFESTS = {
     "docker-compose.yml", "compose.yml", "Makefile", "install.sh",
 }
 DEFAULT_TIMEOUT = 120
+NOISE_TERMS = (
+    "awesome", "curated list", "collection of", "resources for", "tutorial",
+)
 
 
 def now_iso() -> str:
@@ -54,7 +57,7 @@ def emit(payload: dict[str, Any], output: str | None) -> None:
 
 
 def base_payload() -> dict[str, Any]:
-    return {"schema_version": "1.1", "generated_at": now_iso()}
+    return {"schema_version": "2.2", "generated_at": now_iso()}
 
 
 def require_gh() -> str:
@@ -113,6 +116,241 @@ def round_robin(rows_by_query: list[list[dict[str, Any]]], maximum: int) -> list
         if not added and all(rank >= len(rows) for rows in rows_by_query):
             break
     return selected
+
+
+def norm_text(row: dict[str, Any]) -> str:
+    return f"{row.get('fullName') or ''} {row.get('description') or ''}".lower()
+
+
+def contains_any(text: str, terms: list[str]) -> bool:
+    return any(term.lower() in text for term in terms)
+
+
+def license_key(row: dict[str, Any]) -> str:
+    value = row.get("license")
+    if isinstance(value, dict):
+        return str(value.get("key") or "")
+    return str(value or "")
+
+
+def metadata_gate_reason(row: dict[str, Any]) -> str | None:
+    if row.get("isArchived"):
+        return "archived"
+    if row.get("isDisabled"):
+        return "disabled"
+    if row.get("isPrivate"):
+        return "private"
+    if row.get("isFork"):
+        return "fork"
+    if not license_key(row):
+        return "missing_license"
+    if any(term in norm_text(row) for term in NOISE_TERMS):
+        return "obvious_noise"
+    return None
+
+
+def assess_expansion(
+    rows: list[dict[str, Any]],
+    prior_names: set[str],
+    task: dict[str, Any],
+    top_n: int = 10,
+) -> dict[str, Any]:
+    prior = {name.lower() for name in prior_names}
+    novel_plausible = 0
+    overlap = 0
+    constraint_supported = 0
+    for row in rows[:top_n]:
+        name = str(row.get("fullName") or "").lower()
+        if not name or metadata_gate_reason(row):
+            continue
+        text = norm_text(row)
+        is_overlap = name in prior
+        plausible = contains_any(text, task["relevance_terms"]) or is_overlap
+        if is_overlap:
+            overlap += 1
+        if plausible and not is_overlap:
+            novel_plausible += 1
+        if plausible and contains_any(text, task["constraint_terms"]):
+            constraint_supported += 1
+    accepted = novel_plausible >= 2 or overlap >= 2
+    gap_closed = accepted and (
+        constraint_supported >= 3 or novel_plausible >= 3 or overlap >= 3
+    )
+    return {
+        "accepted": accepted,
+        "gap_closed": gap_closed,
+        "novel_plausible": novel_plausible,
+        "overlap": overlap,
+        "constraint_supported": constraint_supported,
+        "top_n": min(top_n, len(rows)),
+    }
+
+
+def rank_candidates(
+    candidates: list[dict[str, Any]],
+    task: dict[str, Any],
+    maximum: int,
+) -> dict[str, Any]:
+    ranked: list[dict[str, Any]] = []
+    excluded: list[dict[str, str]] = []
+    for row in candidates:
+        reason = metadata_gate_reason(row)
+        if reason:
+            excluded.append({"fullName": str(row.get("fullName") or ""), "reason": reason})
+            continue
+        score = 0.0
+        roles: set[str] = set()
+        for match in row.get("matches") or []:
+            role = str(match.get("role") or "")
+            roles.add(role)
+            weight = 0.55 if match.get("phase") == "expansion" else 1.0
+            rank = max(1, int(match.get("rank") or 1))
+            score += weight / (5 + rank)
+        text = norm_text(row)
+        if contains_any(text, task["relevance_terms"]):
+            score += 0.2
+        if contains_any(text, task["constraint_terms"]):
+            score += 0.08
+        if len(roles) > 1:
+            score += 0.1 * (len(roles) - 1)
+        copied = dict(row)
+        copied["selectionScore"] = round(score, 6)
+        ranked.append(copied)
+    ranked.sort(key=lambda item: (-item["selectionScore"], str(item.get("fullName") or "").lower()))
+    return {"selected": ranked[:maximum], "excluded": excluded}
+
+
+def load_query_plan(path: str) -> dict[str, Any]:
+    data = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("query plan must be a JSON object")
+    for field in ("relevance_terms", "constraint_terms", "queries"):
+        if not isinstance(data.get(field), list):
+            raise ValueError(f"query plan field {field!r} must be a list")
+    if not 2 <= len(data["queries"]) <= 7:
+        raise ValueError("query plan must contain 2-7 queries")
+    base_count = 0
+    expansion_count = 0
+    expansion_started = False
+    for index, item in enumerate(data["queries"], start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"query plan item {index} must be an object")
+        role = item.get("role")
+        phase = item.get("phase")
+        query = item.get("query")
+        if not all(isinstance(value, str) and value.strip() for value in (role, phase, query)):
+            raise ValueError(f"query plan item {index} requires non-empty role, phase and query")
+        if phase not in ("base", "expansion"):
+            raise ValueError(f"query plan item {index} has invalid phase: {phase}")
+        if phase == "base":
+            if expansion_started:
+                raise ValueError("base queries must precede expansion queries")
+            base_count += 1
+        else:
+            expansion_started = True
+            expansion_count += 1
+    if not 2 <= base_count <= 3 or not 0 <= expansion_count <= 2:
+        raise ValueError("query plan requires 2-3 base queries and 0-2 expansion queries")
+    for field in ("relevance_terms", "constraint_terms"):
+        if not all(isinstance(term, str) and term.strip() for term in data[field]):
+            raise ValueError(f"query plan field {field!r} must contain non-empty strings")
+    if not data["relevance_terms"]:
+        raise ValueError("query plan requires at least one relevance term")
+    return data
+
+
+def search_rows(
+    gh: str, query: str, limit: int, timeout: int,
+) -> tuple[list[dict[str, Any]], dict[str, str] | None]:
+    result = run([
+        gh, "search", "repos", query,
+        "--limit", str(limit), "--json", SEARCH_FIELDS,
+    ], timeout)
+    if result.returncode != 0:
+        return [], error(query, "command_failed", result.stderr.strip() or "unknown gh error")
+    try:
+        rows = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return [], error(query, "invalid_json", str(exc))
+    if not isinstance(rows, list):
+        return [], error(query, "invalid_shape", "gh search output is not a list")
+    valid = [row for row in rows if isinstance(row, dict) and row.get("fullName")]
+    return valid, None
+
+
+def merge_rows(
+    merged: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+    role: str,
+    phase: str,
+    query: str,
+) -> None:
+    for rank, row in enumerate(rows, start=1):
+        name = str(row["fullName"]).lower()
+        if name not in merged:
+            merged[name] = {**row, "matches": []}
+        merged[name]["matches"].append({
+            "role": role, "phase": phase, "query": query, "rank": rank,
+        })
+
+
+def cmd_adaptive_search(args: argparse.Namespace) -> int:
+    gh = require_gh()
+    plan = load_query_plan(args.plan)
+    merged: dict[str, dict[str, Any]] = {}
+    decisions: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    raw_hits = 0
+    stopped = False
+    for item in plan["queries"]:
+        role = item["role"]
+        phase = item["phase"]
+        query = item["query"]
+        if phase == "expansion" and stopped:
+            decisions.append({"role": role, "phase": phase, "query": query, "status": "skipped_gap_closed"})
+            continue
+        rows, failure = search_rows(gh, query, args.limit_per_query, args.timeout)
+        raw_hits += len(rows)
+        if failure:
+            errors.append(failure)
+            decisions.append({"role": role, "phase": phase, "query": query, "status": "error"})
+            continue
+        if phase == "base":
+            merge_rows(merged, rows, role, phase, query)
+            decisions.append({"role": role, "phase": phase, "query": query, "status": "accepted"})
+            continue
+        decision = assess_expansion(rows, set(merged), plan)
+        decision.update({"role": role, "phase": phase, "query": query})
+        decision["status"] = "accepted" if decision["accepted"] else "rejected_low_yield"
+        decisions.append(decision)
+        if decision["accepted"]:
+            merge_rows(merged, rows, role, phase, query)
+        if decision["gap_closed"]:
+            stopped = True
+    ranked = rank_candidates(list(merged.values()), plan, args.max_candidates)
+    payload = {
+        **base_payload(),
+        "partial": bool(errors),
+        "plan": plan,
+        "query_decisions": decisions,
+        "selection": {
+            "strategy": "adaptive_quality_weighted_v2.2",
+            "truncated": len(ranked["selected"]) < len(merged) - len(ranked["excluded"]),
+        },
+        "counts": {
+            "planned_queries": len(plan["queries"]),
+            "executed_queries": sum(1 for item in decisions if item.get("status") != "skipped_gap_closed"),
+            "raw_hits": raw_hits,
+            "active_deduplicated": len(merged),
+            "excluded": len(ranked["excluded"]),
+            "returned": len(ranked["selected"]),
+        },
+        "errors": errors,
+        "excluded": ranked["excluded"],
+        "candidates": ranked["selected"],
+    }
+    emit(payload, args.output)
+    return 2 if errors else 0
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -358,6 +596,13 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--max-candidates", type=bounded_int(1, 500), default=60)
     search.add_argument("--output")
     search.set_defaults(func=cmd_search)
+
+    adaptive = sub.add_parser("adaptive-search", help="run a phased V2.2 query plan")
+    adaptive.add_argument("--plan", required=True, help="path to a V2.2 query-plan JSON file")
+    adaptive.add_argument("--limit-per-query", type=bounded_int(1, 100), default=20)
+    adaptive.add_argument("--max-candidates", type=bounded_int(1, 500), default=60)
+    adaptive.add_argument("--output")
+    adaptive.set_defaults(func=cmd_adaptive_search)
 
     inspect = sub.add_parser("inspect", help="collect evidence for one repository")
     inspect.add_argument("repo", help="OWNER/REPO")

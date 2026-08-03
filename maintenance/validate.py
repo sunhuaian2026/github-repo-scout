@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the portable find-github-repos skill package."""
+"""Validate the portable github-repo-scout skill package."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = ROOT / "SKILL.md"
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-REF_RE = re.compile(r"(?:\]\(|`)((?:references|assets|scripts)/[^)`\s]+)")
+REF_RE = re.compile(r"(?:\]\(|`)((?:references|assets|scripts|maintenance)/[^)`\s]+)")
 TOP_LEVEL_ALLOWED = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 
 
@@ -67,8 +67,8 @@ def validate_static() -> list[str]:
         errors.append("compatibility must not exceed 500 characters")
     if frontmatter.get("license") != "MIT" or not (ROOT / "LICENSE").is_file():
         errors.append("MIT license field and bundled LICENSE are required")
-    if "version: \"1.1.0\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 1.1.0")
+    if "version: \"2.2.0\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.2.0")
     if len(text.splitlines()) > 500:
         errors.append("SKILL.md exceeds 500 lines")
 
@@ -78,7 +78,7 @@ def validate_static() -> list[str]:
             if not (ROOT / ref).is_file():
                 errors.append(f"{markdown.relative_to(ROOT)} references missing file: {ref}")
 
-    for script in sorted((ROOT / "scripts").glob("*.py")):
+    for script in sorted(path for path in ROOT.rglob("*.py") if ".git" not in path.parts):
         try:
             compile(script.read_text(encoding="utf-8"), str(script), "exec")
         except SyntaxError as exc:
@@ -89,11 +89,15 @@ def validate_static() -> list[str]:
 def validate_smoke() -> list[str]:
     errors: list[str] = []
     collector = ROOT / "scripts" / "github_repos.py"
-    installer = ROOT / "scripts" / "install.py"
+    installer = ROOT / "maintenance" / "manage_skill.py"
 
     help_result = run([sys.executable, str(collector), "--help"])
     if help_result.returncode != 0:
         errors.append(f"collector --help failed: {help_result.stderr.strip()}")
+
+    tests = run([sys.executable, str(ROOT / "maintenance" / "test_github_repos.py")])
+    if tests.returncode != 0:
+        errors.append(f"adaptive search tests failed: {(tests.stderr or tests.stdout).strip()}")
 
     doctor = run([sys.executable, str(collector), "doctor"])
     try:
@@ -104,7 +108,7 @@ def validate_smoke() -> list[str]:
         if doctor.returncode != 0 or not doctor_payload.get("ok"):
             errors.append(f"collector doctor failed: {doctor_payload.get('errors')}")
 
-    with tempfile.TemporaryDirectory(prefix="find-github-repos-smoke-") as temp:
+    with tempfile.TemporaryDirectory(prefix="github-repo-scout-smoke-") as temp:
         home = Path(temp) / "home"
         hermes_home = home / ".hermes"
         common = ["--home", str(home), "--hermes-home", str(hermes_home), "--platform", "all"]

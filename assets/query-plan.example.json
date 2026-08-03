@@ -1,0 +1,37 @@
+{
+  "relevance_terms": [
+    "semantic code search",
+    "code search"
+  ],
+  "constraint_terms": [
+    "local",
+    "offline"
+  ],
+  "queries": [
+    {
+      "role": "category",
+      "phase": "base",
+      "query": "\"semantic code search\" in:name,description,topics archived:false"
+    },
+    {
+      "role": "task",
+      "phase": "base",
+      "query": "\"code search\" local in:name,description,topics archived:false"
+    },
+    {
+      "role": "artifact",
+      "phase": "base",
+      "query": "code embeddings search in:name,description,topics archived:false"
+    },
+    {
+      "role": "readme-local",
+      "phase": "expansion",
+      "query": "\"semantic code search\" local in:readme archived:false"
+    },
+    {
+      "role": "topic",
+      "phase": "expansion",
+      "query": "topic:code-search semantic archived:false"
+    }
+  ]
+}

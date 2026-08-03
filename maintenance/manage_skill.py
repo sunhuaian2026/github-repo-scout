@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SKILL_NAME = "find-github-repos"
+SKILL_NAME = "github-repo-scout"
 MARKER = ".managed-skill.json"
 PLATFORMS = ("hermes", "codex", "claude")
 
@@ -40,7 +40,9 @@ def included_files(root: Path) -> Iterator[tuple[Path, Path]]:
         rel = path.relative_to(root)
         if (
             rel.name == MARKER
+            or rel.as_posix() == "README.md"
             or ".git" in rel.parts
+            or rel.parts[0] == "maintenance"
             or "__pycache__" in rel.parts
             or rel.suffix == ".pyc"
             or any(part.startswith(f"{SKILL_NAME}.previous-") for part in rel.parts)
@@ -103,10 +105,10 @@ def stage_copy(source: Path, target: Path) -> Path:
             source,
             staged,
             dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", MARKER),
+            ignore=shutil.ignore_patterns(".git", "maintenance", "README.md", "__pycache__", "*.pyc", MARKER),
         )
         marker = {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "canonical_source": str(source),
             "content_sha256": tree_hash(source),
         }
