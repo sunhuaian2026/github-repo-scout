@@ -1,4 +1,6 @@
-# GitHub Repo Scout
+# GitHub Repo Scout（GitHub 开源项目侦察员）
+
+> GitHub 仓库发现、审查与选型
 
 一份跨 Hermes Agent、OpenAI Codex CLI 和 Anthropic Claude Code 使用的 GitHub 仓库发现与选型 Skill。
 
