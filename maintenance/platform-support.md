@@ -9,8 +9,13 @@
 | Hermes Agent | `~/.hermes/skills/research/github-repo-scout/` |
 | Codex CLI | `~/.agents/skills/github-repo-scout/` |
 | Claude Code | `~/.claude/skills/github-repo-scout/` |
+| Cursor | `~/.cursor/skills/github-repo-scout/` |
+| Gemini CLI | `~/.agents/skills/github-repo-scout/` |
+| GitHub Copilot | `~/.agents/skills/github-repo-scout/` |
+| OpenCode | `~/.agents/skills/github-repo-scout/` |
+| Windsurf | `~/.codeium/windsurf/skills/github-repo-scout/` |
 
-`maintenance/manage_skill.py` 先完成三平台预检和临时副本校验，再带锁切换目录；任何平台切换失败时恢复本轮已经替换的目标。运行副本使用内容哈希检测漂移。
+Codex、Gemini CLI、GitHub Copilot 和 OpenCode 共用官方支持的 `~/.agents/skills/`，避免重复 Skill 和优先级冲突。平台定义来自 `maintenance/agents.json`。`install.py` 负责检测、别名解析、共享目标去重和任意 `--target`；`maintenance/manage_skill.py` 提供事务复制、临时副本校验、带锁切换和回滚。任何目标切换失败时恢复本轮已经替换的目标，运行副本使用内容哈希检测漂移。
 
 ## 部署
 
@@ -20,7 +25,7 @@
 python3 install.py
 ```
 
-维护者使用完整流程：
+维护者对 Hermes、Codex、Claude 三个平台基线使用完整流程：
 
 ```bash
 python3 maintenance/validate.py
@@ -39,7 +44,9 @@ python3 maintenance/manage_skill.py uninstall --platform all
 2. **Hermes**：能发现 `github-repo-scout`；名称和自然语言触发各验证一次。
 3. **Codex**：显式 `$github-repo-scout` 和自然语言触发各验证一次。
 4. **Claude Code**：显式 `/github-repo-scout` 和自然语言触发各验证一次。
-5. **行为**：三平台对同一固定请求都先报告约束与查询矩阵，不执行候选安装。
-6. **漂移**：`manage_skill.py check --platform all` 均返回 `ok`。
+5. **注册表平台**：Cursor、Gemini CLI、GitHub Copilot、OpenCode、Windsurf 的官方用户级目录完成隔离安装、检查和卸载测试。
+6. **自定义平台**：任意 `--target` 完成隔离安装、检查和卸载测试。
+7. **行为**：已具备运行环境的 Agent 对同一固定请求都先报告约束与查询矩阵，不执行候选安装。
+8. **漂移**：受管副本检查返回 `ok`；真实内容改动返回 `drift`，干净旧版返回 `outdated`。
 
 平台专有 frontmatter 不写入 canonical `SKILL.md`，避免某一平台的权限或调用语法污染其他平台。

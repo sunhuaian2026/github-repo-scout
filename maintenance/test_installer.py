@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -29,6 +29,7 @@ class InstallerCliTests(unittest.TestCase):
                 str(home),
                 "--hermes-home",
                 str(home / ".hermes"),
+                "--no-system-detection",
                 *args,
             ],
             text=True,
@@ -38,11 +39,86 @@ class InstallerCliTests(unittest.TestCase):
         )
 
     def target(self, home: Path, agent: str) -> Path:
-        if agent == "hermes":
-            return home / ".hermes" / "skills" / "research" / "github-repo-scout"
-        if agent == "codex":
-            return home / ".agents" / "skills" / "github-repo-scout"
-        return home / ".claude" / "skills" / "github-repo-scout"
+        roots = {
+            "hermes": home / ".hermes" / "skills" / "research",
+            "codex": home / ".agents" / "skills",
+            "claude": home / ".claude" / "skills",
+            "cursor": home / ".cursor" / "skills",
+            "gemini": home / ".agents" / "skills",
+            "copilot": home / ".agents" / "skills",
+            "opencode": home / ".agents" / "skills",
+            "windsurf": home / ".codeium" / "windsurf" / "skills",
+        }
+        return roots[agent] / "github-repo-scout"
+
+    def test_list_agents_comes_from_registry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.run_installer(Path(temp), "--list-agents")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for agent in ("hermes", "codex", "claude", "cursor", "gemini", "copilot", "opencode", "windsurf"):
+                self.assertIn(agent, result.stdout)
+
+    def test_cursor_is_detected_from_its_home_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            (home / ".cursor").mkdir()
+            result = self.run_installer(home)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(self.target(home, "cursor").is_dir())
+            self.assertFalse(self.target(home, "claude").exists())
+
+    def test_agent_alias_resolves_through_registry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            result = self.run_installer(home, "--agent", "gemini-cli", "--allow-missing-agent")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(self.target(home, "gemini").is_dir())
+
+    def test_every_registered_agent_supports_predeploy_and_check(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            for agent in ("hermes", "codex", "claude", "cursor", "gemini", "copilot", "opencode", "windsurf"):
+                with self.subTest(agent=agent):
+                    install = self.run_installer(home, "--agent", agent, "--allow-missing-agent")
+                    self.assertEqual(install.returncode, 0, install.stderr)
+                    self.assertTrue(self.target(home, agent).is_dir())
+                    check = self.run_installer(home, "--check", "--agent", agent)
+                    self.assertEqual(check.returncode, 0, check.stderr)
+
+    def test_custom_target_supports_install_check_and_uninstall(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            root = home / "custom-agent" / "skills"
+            install = self.run_installer(home, "--target", str(root))
+            self.assertEqual(install.returncode, 0, install.stderr)
+            self.assertTrue((root / "github-repo-scout" / "SKILL.md").is_file())
+            check = self.run_installer(home, "--check", "--target", str(root))
+            self.assertEqual(check.returncode, 0, check.stderr)
+            uninstall = self.run_installer(home, "--uninstall", "--target", str(root))
+            self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+            self.assertFalse((root / "github-repo-scout").exists())
+
+    def test_target_only_uninstall_preserves_known_agent_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            known = self.run_installer(home, "--agent", "hermes", "--allow-missing-agent")
+            self.assertEqual(known.returncode, 0, known.stderr)
+            root = home / "custom-agent" / "skills"
+            custom = self.run_installer(home, "--target", str(root))
+            self.assertEqual(custom.returncode, 0, custom.stderr)
+
+            uninstall = self.run_installer(home, "--uninstall", "--target", str(root))
+            self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+            self.assertTrue(self.target(home, "hermes").is_dir())
+            self.assertFalse((root / "github-repo-scout").exists())
+
+    def test_unknown_agent_points_to_custom_target_without_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            result = self.run_installer(home, "--agent", "future-agent")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("--target", result.stderr)
+            self.assertEqual(list(home.iterdir()), [])
 
     def test_default_refuses_when_no_supported_agent_is_detected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -66,6 +142,19 @@ class InstallerCliTests(unittest.TestCase):
             check = self.run_installer(home, "--check")
             self.assertEqual(check.returncode, 0, check.stderr)
             self.assertIn("hermes: skipped", check.stdout)
+
+    def test_agents_alias_root_is_shared_without_duplicate_native_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            (home / ".codex").mkdir()
+            (home / ".gemini").mkdir()
+            result = self.run_installer(home)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("codex+gemini", result.stdout)
+            self.assertIn("copilot: skipped", result.stdout)
+            self.assertIn("opencode: skipped", result.stdout)
+            self.assertTrue(self.target(home, "codex").is_dir())
+            self.assertFalse((home / ".gemini" / "skills" / "github-repo-scout").exists())
 
     def test_explicit_missing_agent_errors_without_creating_directories(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -93,7 +182,7 @@ class InstallerCliTests(unittest.TestCase):
             self.assertEqual(first.returncode, 0, first.stderr)
             target = self.target(home, "hermes")
             skill = target / "SKILL.md"
-            skill.write_text(skill.read_text(encoding="utf-8").replace('version: "2.2.1"', 'version: "2.2.0"'), encoding="utf-8")
+            skill.write_text(skill.read_text(encoding="utf-8").replace('version: "2.3.0"', 'version: "2.2.1"'), encoding="utf-8")
             marker = target / ".managed-skill.json"
             payload = json.loads(marker.read_text(encoding="utf-8"))
             payload["content_sha256"] = tree_hash(target)
@@ -101,7 +190,7 @@ class InstallerCliTests(unittest.TestCase):
 
             upgrade = self.run_installer(home, "--agent", "hermes")
             self.assertEqual(upgrade.returncode, 0, upgrade.stderr)
-            self.assertIn('version: "2.2.1"', skill.read_text(encoding="utf-8"))
+            self.assertIn('version: "2.3.0"', skill.read_text(encoding="utf-8"))
 
     def test_modified_managed_copy_still_requires_accept_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

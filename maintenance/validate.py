@@ -71,8 +71,17 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.2.1\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.2.1")
+    if "version: \"2.3.0\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.3.0")
+    registry_path = ROOT / "maintenance" / "agents.json"
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        ids = {agent["id"] for agent in registry.get("agents", [])}
+        required = {"hermes", "codex", "claude", "cursor", "gemini", "copilot", "opencode", "windsurf"}
+        if registry.get("schema_version") != 1 or not required.issubset(ids):
+            errors.append("agent registry schema or required platform set is invalid")
+    except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        errors.append(f"invalid agent registry: {exc}")
     if len(text.splitlines()) > 500:
         errors.append("SKILL.md exceeds 500 lines")
 

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "agents": [
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "aliases": ["hermes-agent"],
+      "skill_root": "{hermes_home}/skills/research",
+      "detect": {
+        "commands": ["hermes"],
+        "paths": ["{hermes_home}"]
+      },
+      "documentation": "https://hermes-agent.nousresearch.com/docs"
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "aliases": ["codex-cli"],
+      "skill_root": "{home}/.agents/skills",
+      "detect": {
+        "commands": ["codex"],
+        "paths": ["{home}/.codex"]
+      },
+      "documentation": "https://developers.openai.com/codex/skills"
+    },
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "aliases": ["claude-code"],
+      "skill_root": "{home}/.claude/skills",
+      "detect": {
+        "commands": ["claude"],
+        "paths": ["{home}/.claude"]
+      },
+      "documentation": "https://code.claude.com/docs/en/skills"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "aliases": ["cursor-agent"],
+      "skill_root": "{home}/.cursor/skills",
+      "detect": {
+        "commands": ["cursor"],
+        "paths": ["{home}/.cursor", "/Applications/Cursor.app"]
+      },
+      "documentation": "https://cursor.com/docs/skills"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "aliases": ["gemini-cli"],
+      "skill_root": "{home}/.agents/skills",
+      "detect": {
+        "commands": ["gemini"],
+        "paths": ["{home}/.gemini"]
+      },
+      "documentation": "https://geminicli.com/docs/cli/skills"
+    },
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot",
+      "aliases": ["github-copilot", "copilot-cli"],
+      "skill_root": "{home}/.agents/skills",
+      "detect": {
+        "commands": ["copilot"],
+        "paths": ["{home}/.copilot"]
+      },
+      "documentation": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "aliases": ["open-code"],
+      "skill_root": "{home}/.agents/skills",
+      "detect": {
+        "commands": ["opencode"],
+        "paths": ["{home}/.config/opencode"]
+      },
+      "documentation": "https://opencode.ai/docs/skills"
+    },
+    {
+      "id": "windsurf",
+      "name": "Windsurf",
+      "aliases": ["cascade"],
+      "skill_root": "{home}/.codeium/windsurf/skills",
+      "detect": {
+        "commands": ["windsurf"],
+        "paths": ["{home}/.codeium/windsurf", "/Applications/Windsurf.app"]
+      },
+      "documentation": "https://docs.windsurf.com/windsurf/cascade/skills"
+    }
+  ]
+}

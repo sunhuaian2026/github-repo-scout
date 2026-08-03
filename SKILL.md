@@ -2,10 +2,10 @@
 name: github-repo-scout
 description: GitHub 仓库侦察与选型。Use when 用户要寻找或比较开源项目、评估仓库能否采用，或寻找现有方案的替代品。
 license: MIT
-compatibility: Hermes Agent, Codex CLI, Claude Code；需要 Python 3.9+、GitHub CLI gh 和 GitHub 网络访问。
+compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+、GitHub CLI gh 和 GitHub 网络访问。
 metadata:
   author: Sun Hongjun (sunerpang)
-  version: "2.2.1"
+  version: "2.3.0"
 ---
 
 # GitHub Repo Scout

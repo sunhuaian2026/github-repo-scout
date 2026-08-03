@@ -2,7 +2,7 @@
 
 > GitHub 仓库发现、审查与选型
 
-一份跨 Hermes Agent、OpenAI Codex CLI 和 Anthropic Claude Code 使用的 GitHub 仓库发现与选型 Skill。
+一份符合 Agent Skills 规范、可跨多种 Agent 使用的 GitHub 仓库发现与选型 Skill。
 
 它不会只按 Stars 罗列热门项目，而是从任务约束出发建立查询矩阵、候选漏斗和证据链，先做 Gate，再给推荐；推荐完成后默认停止，不会擅自安装第三方仓库。
 
@@ -16,7 +16,7 @@
 
 ## 前置条件
 
-- Python 3.9+
+- Python 3.10+
 - [GitHub CLI `gh`](https://cli.github.com/)
 - 已完成 `gh auth login`
 - 可访问 GitHub
@@ -35,14 +35,21 @@ python3 scripts/github_repos.py doctor
 python3 install.py
 ```
 
-安装器会检测本机已有的 Hermes Agent、Codex CLI 和 Claude Code，只安装到已检测到的 Agent；不存在的目标显示 `skipped`，不会创建无效目录。
+安装器从 [`maintenance/agents.json`](maintenance/agents.json) 读取平台定义，自动检测本机已有 Agent，只安装到已检测目标；不存在的目标显示 `skipped`，不会创建无效目录。
+
+查看已知 Agent、别名、检测状态和目标路径：
+
+```bash
+python3 install.py --list-agents
+```
 
 指定单个 Agent：
 
 ```bash
 python3 install.py --agent hermes
-python3 install.py --agent codex
-python3 install.py --agent claude
+python3 install.py --agent cursor
+python3 install.py --agent gemini-cli
+python3 install.py --agent cursor --agent opencode
 ```
 
 显式指定的 Agent 不存在时，安装器会报错。确实需要提前部署目录时，使用：
@@ -51,11 +58,21 @@ python3 install.py --agent claude
 python3 install.py --agent hermes --allow-missing-agent
 ```
 
+对于未收录、但支持标准 `SKILL.md` 的 Agent，直接指定其用户级 skills 根目录；安装器会自动追加 `github-repo-scout/`：
+
+```bash
+python3 install.py --target ~/.some-agent/skills
+```
+
+`--agent` 和 `--target` 都可以重复使用或组合使用。
+
 检查和卸载：
 
 ```bash
 python3 install.py --check
 python3 install.py --uninstall --agent hermes
+python3 install.py --check --target ~/.some-agent/skills
+python3 install.py --uninstall --target ~/.some-agent/skills
 ```
 
 默认路径：
@@ -65,6 +82,21 @@ python3 install.py --uninstall --agent hermes
 | Hermes Agent | `~/.hermes/skills/research/github-repo-scout/` |
 | Codex CLI | `~/.agents/skills/github-repo-scout/` |
 | Claude Code | `~/.claude/skills/github-repo-scout/` |
+| Cursor | `~/.cursor/skills/github-repo-scout/` |
+| Gemini CLI | `~/.agents/skills/github-repo-scout/` |
+| GitHub Copilot | `~/.agents/skills/github-repo-scout/` |
+| OpenCode | `~/.agents/skills/github-repo-scout/` |
+| Windsurf | `~/.codeium/windsurf/skills/github-repo-scout/` |
+
+Codex、Gemini CLI、GitHub Copilot 和 OpenCode 官方均支持 `~/.agents/skills/`；安装器优先复用这份标准副本，避免重复 Skill 和优先级冲突。
+
+发布到公开 GitHub 仓库后，还可以增加生态安装入口：
+
+```bash
+npx skills add <owner>/github-repo-scout
+```
+
+`<owner>` 只是占位符；当前项目尚未配置远程仓库，不能把它当作现成命令。
 
 ## 维护者验证与高级管理
 
@@ -83,7 +115,7 @@ python3 maintenance/manage_skill.py check --platform all
 
 ### 直接用自然语言
 
-三个 Agent 都可以直接描述需求，例如：
+兼容 Agent 都可以直接描述需求，例如：
 
 #### 查找项目
 
@@ -206,6 +238,7 @@ github-repo-scout/
 ├── SKILL.md                       # Agent 运行流程
 ├── README.md                      # 人类使用说明
 ├── LICENSE
+├── install.py                      # 通用一键安装入口
 ├── scripts/
 │   └── github_repos.py            # GitHub 证据采集
 ├── references/
@@ -215,7 +248,8 @@ github-repo-scout/
 │   ├── query-plan.example.json    # V2.2 查询计划示例
 │   └── report-template.md         # 输出模板
 └── maintenance/
-    ├── manage_skill.py            # 三平台安装、检查和卸载
+    ├── agents.json                # 已知 Agent 声明式注册表
+    ├── manage_skill.py            # 事务复制、检查、卸载和回滚
     ├── validate.py                # 静态与 smoke 校验
     └── platform-support.md        # 平台路径与验收矩阵
 ```
