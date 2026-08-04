@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = importlib.util.spec_from_file_location("github_repos", ROOT / "scripts" / "github_repos.py")
+SKILL_ROOT = ROOT / "skills" / "github-repo-scout"
+SPEC = importlib.util.spec_from_file_location("github_repos", SKILL_ROOT / "scripts" / "github_repos.py")
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

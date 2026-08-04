@@ -21,7 +21,8 @@ PLATFORMS = ("hermes", "codex", "claude")
 
 
 def skill_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent
+    return project_root / "skills" / SKILL_NAME
 
 
 def targets(home: Path, hermes_home: Path | None = None) -> dict[str, Path]:

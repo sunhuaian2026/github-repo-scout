@@ -1,6 +1,6 @@
 # 跨平台安装与验收
 
-本仓库遵循 Agent Skills 开放规范，运行内容只有一份 canonical source。`maintenance/` 是仓库维护分支，不复制到各平台运行目录。
+本仓库遵循 Agent Skills 开放规范，唯一 canonical source 位于 `skills/github-repo-scout/`。根目录的 `README.md`、`install.py` 和 `maintenance/` 不复制到各平台运行目录，也不会被 npx 安装。
 
 ## 扫描目录
 
@@ -48,5 +48,7 @@ python3 maintenance/manage_skill.py uninstall --platform all
 6. **自定义平台**：任意 `--target` 完成隔离安装、检查和卸载测试。
 7. **行为**：已具备运行环境的 Agent 对同一固定请求都先报告约束与查询矩阵，不执行候选安装。
 8. **漂移**：受管副本检查返回 `ok`；真实内容改动返回 `drift`，干净旧版返回 `outdated`。
+9. **npx 包边界**：远程安装只包含 `SKILL.md`、`LICENSE`、`scripts/`、`references/` 和 `assets/`；不包含仓库 README、安装器和维护测试。
+10. **通用目录识别**：Skills CLI 的 `agents: []` 只表示通用目录未归属单一 Agent；最终以目标路径、哈希和客户端实际发现为准。
 
 平台专有 frontmatter 不写入 canonical `SKILL.md`，避免某一平台的权限或调用语法污染其他平台。

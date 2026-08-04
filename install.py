@@ -20,8 +20,9 @@ from maintenance.manage_skill import (
     uninstall_all,
 )
 
-ROOT = Path(__file__).resolve().parent
-REGISTRY_PATH = ROOT / "maintenance" / "agents.json"
+PROJECT_ROOT = Path(__file__).resolve().parent
+SKILL_SOURCE = PROJECT_ROOT / "skills" / SKILL_NAME
+REGISTRY_PATH = PROJECT_ROOT / "maintenance" / "agents.json"
 
 
 @dataclass(frozen=True)
@@ -212,7 +213,7 @@ def main() -> int:
             return 2
         ok = True
         for label, target in selected:
-            current = status(ROOT, target)
+            current = status(SKILL_SOURCE, target)
             print(f"{label}: {current} ({target})")
             ok = ok and current == "ok"
         return 0 if ok else 1
@@ -229,7 +230,7 @@ def main() -> int:
             with ExitStack() as stack:
                 for parent in sorted({target.parent for _, target in selected}, key=str):
                     stack.enter_context(directory_lock(parent))
-                uninstall_all(ROOT, selected, args.accept_drift)
+                uninstall_all(SKILL_SOURCE, selected, args.accept_drift)
             for label, target in selected:
                 print(f"{label}: uninstalled {target}")
             return 0
@@ -263,7 +264,7 @@ def main() -> int:
         with ExitStack() as stack:
             for parent in sorted({target.parent for _, target in selected}, key=str):
                 stack.enter_context(directory_lock(parent))
-            install_all(ROOT, selected, args.accept_drift)
+            install_all(SKILL_SOURCE, selected, args.accept_drift)
         for label, target in selected:
             print(f"{label}: installed {target}")
         return 0
