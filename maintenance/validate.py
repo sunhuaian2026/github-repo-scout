@@ -80,12 +80,13 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.3.5\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.3.5")
+    if "version: \"2.3.6\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.3.6")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
-    if "one_time_trial" not in text or "不能用试用额度替代长期免费" not in text:
-        errors.append("SKILL.md must distinguish sustainable free use from one-time trials")
+    scoring = (SKILL_ROOT / "references" / "scoring.md").read_text(encoding="utf-8")
+    if "one_time_trial" not in scoring or "recurring_free_tier" not in scoring:
+        errors.append("scoring.md must distinguish sustainable free use from one-time trials")
     if "activity_summary" not in text or "latest_observed_code_commit_at" not in text or "non_core" not in text:
         errors.append("SKILL.md must distinguish code maintenance from documentation-only activity")
     if "相同硬门槛和同一证据集必须得到相同 Gate" not in text:
@@ -94,17 +95,27 @@ def validate_static() -> list[str]:
         errors.append("SKILL.md must require deterministic planning, deep review selection and decision validation")
     if "recommendation_rank" not in text or "route_priority" not in text or "--search-results" not in text:
         errors.append("SKILL.md must bind candidate evidence and recommendation order")
-    if "access_route" not in text or "terms_status" not in text or "permitted_with_conditions" not in text or "platform_access_required" not in text:
-        errors.append("SKILL.md must bind recommendations to official platform terms")
-    if "### 6. 能力边界" not in text or "不安装或运行候选项目" not in text or "新的独立任务" not in text:
+    if "permitted_with_conditions" not in scoring or "separate_contract_required" not in scoring:
+        errors.append("scoring.md must explain platform terms Gate categories")
+    if "唯一文字来源" not in scoring or "validate-decision" not in scoring:
+        errors.append("scoring.md must declare rule authority")
+    if "## 能力边界" not in text or "报告完成时结束" not in text or "新的独立任务" not in text:
         errors.append("SKILL.md must stop at comparison and keep candidate execution outside this Skill")
-    if "### 6. 安装是独立 Gate" in text or "进入安装阶段" in text:
+    if "### 6." in text or "安装分成独立" in text or "进入安装阶段" in text:
         errors.append("SKILL.md must not define candidate installation as part of comparison")
     report_template = (SKILL_ROOT / "assets" / "report-template.md").read_text(encoding="utf-8")
-    if "已做源码与官方证据核实，未做运行实测" not in report_template or "新的独立任务" not in report_template:
-        errors.append("report template must keep candidate execution outside the comparison workflow")
-    if "## 下一 Gate" in report_template or "候选安装流程" not in report_template:
-        errors.append("report template must not invite candidate installation")
+    detailed_template = (SKILL_ROOT / "assets" / "detailed-report-template.md").read_text(encoding="utf-8")
+    if "已做源码与官方证据核实，未做运行实测" not in report_template:
+        errors.append("compact report template must state its evidence level")
+    if len(report_template.splitlines()) > 45:
+        errors.append("default report template must remain compact")
+    if "候选详评" not in detailed_template or "新的独立任务" not in detailed_template:
+        errors.append("detailed report template must preserve audit detail and scope")
+    security_review = (SKILL_ROOT / "references" / "security-review.md").read_text(encoding="utf-8")
+    if "采用风险" not in security_review or "不执行候选代码" not in security_review:
+        errors.append("security review must assess adoption risk without executing candidates")
+    if "推荐用户安装" in security_review or "安装与回滚" in security_review or "审批 Gate" in security_review:
+        errors.append("security review contains stale candidate-installation workflow")
     if "base_search_complete: false" not in text or "禁止形成推荐" not in text:
         errors.append("SKILL.md must fail closed when base discovery is incomplete")
     registry_path = PROJECT_ROOT / "maintenance" / "agents.json"
@@ -116,8 +127,8 @@ def validate_static() -> list[str]:
             errors.append("agent registry schema or required platform set is invalid")
     except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
         errors.append(f"invalid agent registry: {exc}")
-    if len(text.splitlines()) > 500:
-        errors.append("SKILL.md exceeds 500 lines")
+    if len(text.splitlines()) > 200:
+        errors.append("SKILL.md exceeds the 200-line sprawl guard")
 
     for markdown in sorted(SKILL_ROOT.rglob("*.md")):
         content = markdown.read_text(encoding="utf-8")
