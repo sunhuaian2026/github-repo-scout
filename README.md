@@ -90,13 +90,19 @@ python3 install.py --uninstall --target ~/.some-agent/skills
 
 Codex、Gemini CLI、GitHub Copilot 和 OpenCode 官方均支持 `~/.agents/skills/`；安装器优先复用这份标准副本，避免重复 Skill 和优先级冲突。
 
-发布到公开 GitHub 仓库后，还可以增加生态安装入口：
+也可以直接从公开 GitHub 仓库通过 Skills CLI 安装：
 
 ```bash
-npx skills add <owner>/github-repo-scout
+npx skills add sunhuaian2026/github-repo-scout
 ```
 
-`<owner>` 只是占位符；当前项目尚未配置远程仓库，不能把它当作现成命令。
+全局安装到指定 Agent，例如 Codex：
+
+```bash
+npx skills add sunhuaian2026/github-repo-scout --skill github-repo-scout --agent codex --global --yes --copy
+```
+
+不想预装 CLI 时无需先执行 `npm install`；`npx` 会按需运行当前 Skills CLI。Hermes Agent 建议继续使用上面的 `python3 install.py --agent hermes`，以保留本项目的事务安装、漂移检查和回滚能力。
 
 ## 维护者验证与高级管理
 
