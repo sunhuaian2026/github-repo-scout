@@ -233,6 +233,8 @@ python3 skills/github-repo-scout/scripts/github_repos.py inspect owner/repositor
 - Stars 只是社区信号，不能补偿适配、安全或维护问题。
 - 所有失败查询和未知证据都必须显式报告。
 
+**Snyk 扫描说明：** `W011 / Medium / Third-party content exposure` 是本 Skill 的固有残余风险：它必须读取 GitHub 上第三方维护的 README、Issue、提交信息和源码来完成侦察。该告警不表示发现恶意代码；当前独立扫描只报告这一项，原因置信度为 `0.30`，其他八类检查均未发现问题。运行包通过“不可信内容只作证据、搜索阶段不执行候选命令、安装另设用户批准 Gate”降低风险，但不会为了消除告警而假装不读取第三方资料。
+
 ## 更新、检查和卸载
 
 修改 canonical source 后重新部署：
