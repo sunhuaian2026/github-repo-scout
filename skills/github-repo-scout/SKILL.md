@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+、GitHub CLI gh 和 GitHub 网络访问。
 metadata:
   author: Sun Hongjun (16414766@qq.com)
-  version: "2.3.2"
+  version: "2.3.3"
 ---
 
 # GitHub Repo Scout
@@ -15,6 +15,8 @@ metadata:
 ## 运行约定
 
 先确定当前加载的 `SKILL.md` 所在目录，以下写作 `<skill-dir>`。所有支持文件都相对 `<skill-dir>` 解析，不相对用户当前工作目录；`<temporary-directory>` 使用当前系统可写的临时目录。
+
+Codex CLI 的 `workspace-write` 沙箱默认关闭 Shell 网络；使用本 Skill 前必须由用户批准网络访问，或设置 `sandbox_workspace_write.network_access = true`。`doctor` 失败时不得用随机网页搜索替代候选发现后继续推荐。
 
 ## 不可信内容边界
 
@@ -37,13 +39,26 @@ GitHub 仓库元数据、README、Issue、SECURITY.md、许可证、源码和 AP
 
 默认解释明确时直接推进并公开假设；只有错误假设会显著改变候选池或带来风险时才提问。
 
-用户只说“免费”时，默认解释为普通个人用量下可长期持续的零新增支出，不把一次性赠金、限时试用或必须付费续用的服务写成免费方案。成本统一分为：`permanent_free`（永久免费或开源本地）、`recurring_free_tier`（周期性免费额度）、`one_time_trial`（一次性试用）、`paid`、`unknown`。后两类不通过“长期免费”硬门槛；周期性免费额度必须核验重置周期、上限和超限后果。
+用户只说“免费”时，默认解释为普通个人用量下可长期持续的零新增支出，不把一次性赠金、限时试用或必须付费续用的服务写成免费方案。成本统一分为：`permanent_free`（永久免费或开源本地）、`recurring_free_tier`（周期性免费额度）、`one_time_trial`（一次性试用）、`paid`、`unknown`。后两类不通过“长期免费”硬门槛；周期性免费额度必须核验重置周期、上限和超限后果，推荐时 Gate 固定为 `conditional`，不得写成无条件通过。
+
+许可证 Gate 取决于用途：`use_only` 时缺许可证保留为法律状态未知并降低置信度；需要复制、修改或分发时使用 `modify_or_distribute`，缺少明确许可证必须淘汰。
+
+只有平台数据访问、抓取或 API 工具任务才设置 `platform_access_required: true` 并启用以下 Gate；普通代码库比较设为 `false`。平台访问路线字段 `access_route` 必须结构化为 `official_api`、`public_feed`、`scraping`、`third_party_archive`、`mixed` 或 `unknown`。条款字段 `terms_status` 分为 `permitted`、`permitted_with_conditions`、`separate_contract_required`、`prohibited`、`unknown`：普通申请资格、OAuth、额度和用途限制属于 `permitted_with_conditions`，可以有条件推荐；需要另签合同、明确禁止或未知则淘汰。不得把常规 API 审批误写成必须另签合同，也不得凭 README 的“免 Key”主张放行。若工具同时支持 OAuth 与匿名抓取，可以只推荐其官方 API 模式，并在边界中明确禁用匿名抓取路径。
 
 ## 工作流
 
 ### 1. 建立自适应查询计划
 
-创建 JSON 查询计划，结构参考 `assets/query-plan.example.json`：
+平台工具类任务（如 Reddit、YouTube、GitHub 抓取工具）必须先用固定矩阵生成计划，不手写同义查询：
+
+```bash
+python3 "<skill-dir>/scripts/github_repos.py" platform-plan Reddit \
+  --output "<temporary-directory>/github-repo-scout-plan.json"
+```
+
+未指定接口偏好时默认 `--prefer sdk`，推荐顺序为 API wrapper → MCP → Agent Skill → CLI scraper；用户明确要 Agent 原生或 CLI 时分别使用 `--prefer agent` / `--prefer cli`。该顺序写入 `route_priority`，不得由模型临时改写。
+
+其他任务才创建自适应 JSON 查询计划，结构参考 `assets/query-plan.example.json`：
 
 1. **基础召回 2–3 条**：类别、任务表达和高信息产物词，覆盖不同召回面。任务依赖外部平台或 API 时，其中一条必须搜索生态原生路线，如官方 API、SDK、客户端或主流 wrapper，避免只召回外围 scraper。
 2. **缺口扩展 0–2 条**：只有任务存在明确缺口时，加入领域内高信息约束短语。
@@ -62,7 +77,7 @@ python3 "<skill-dir>/scripts/github_repos.py" adaptive-search \
 
 扩展查询 Top-10 至少带来 2 个可信新候选，或与基础池重合 2 个，才进入合并；带来 3 个可信新候选或重合 3 个时停止下一条扩展。`query_decisions` 记录接受、拒绝和提前停止。
 
-`partial: true` 或非零退出码表示证据不完整；报告失败查询、被拒绝扩展、原因及对候选池的影响。
+`doctor` 必须先通过。任一基础查询失败时，`base_search_complete: false`、`recommendation_eligible: false`；此时只能报告阻塞和已有线索，禁止形成推荐、禁止改用随机网页搜索重建候选池。扩展查询失败可标为 `partial`，但必须说明影响。
 
 **完成条件：** 基础查询召回面不同，扩展由缺口驱动；所有计划查询都有执行、失败、拒绝或跳过记录，假设和数据缺口已公开。
 
@@ -71,11 +86,11 @@ python3 "<skill-dir>/scripts/github_repos.py" adaptive-search \
 按 `fullName` 去重，保留仓库命中的全部查询。依次执行：
 
 1. 排除 archived、disabled、明显无关的 fork 或镜像。
-2. 对需要复制、修改或分发的任务，把无许可证标为法律状态未知的 Gate。
+2. `license_required: true` 只用于复制、修改或分发；仅使用时无许可证候选保留为 `licenseStatus: missing`，但降低排序与置信度。
 3. 基础查询权重大于扩展查询，多查询命中加分；低质量扩展不能通过轮询挤入 Top-K。
 4. 分别记录 `updatedAt`、`pushedAt`、最近 commit 和 release。
 
-`adaptive-search` 将 archived、disabled、private、fork、无许可证及明显清单/教程写入 `excluded`，并保留每个候选的来源查询、阶段、角色和查询内排名。`selectionScore` 只控制发现阶段顺序，不代替后续 Gate 和证据评级；Stars 不参与全局截断或排序。
+`adaptive-search` 将 archived、disabled、private、fork、明确 deprecated 及明显清单/教程写入 `excluded`；仅在 `license_required: true` 时淘汰无许可证候选。它保留每个候选的来源查询、阶段、角色和查询内排名。`selectionScore` 只控制发现阶段顺序，不代替后续 Gate 和证据评级；Stars 不参与全局截断或排序。
 
 展示：原始命中 → 去重 → 截断 → 通过硬门槛 → 深度审查 → 推荐。
 
@@ -83,7 +98,9 @@ python3 "<skill-dir>/scripts/github_repos.py" adaptive-search \
 
 ### 3. 深度审查入围仓库
 
-对通过硬门槛的候选逐个运行：
+`adaptive-search` 输出固定的 `deep_review_candidates`：依次覆盖 API wrapper、MCP、Agent Skill、CLI scraper，再按排序补足，总数最多 5 个。必须只深审这组候选；不得因模型偏好自行换一批。某候选证据采集失败时保留失败记录，不用随机网页搜索替换仓库。
+
+对入围候选逐个运行：
 
 ```bash
 python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
@@ -95,7 +112,7 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - GitHub 元数据、默认分支、README 和 LICENSE。
 - 源码树、依赖清单、lockfile 与安装入口。
 - `pushed_at`、最近提交、release、Issues / PR 活跃度。
-- `activity_summary` 与最近提交的 `changed_files`：`pushed_at`、README、赞助商、徽章、文档或 CI 更新不能单独证明核心代码仍在维护；必须把核心代码、测试、依赖或发布物更新与文档更新分开。
+- `activity_summary` 只代表最近 5 次提交样本：读取 `scope`、`sampled_commit_count` 和 `latest_observed_code_commit_at`；不得把观察值写成仓库全历史。`non_core`（README、赞助商、徽章、文档、CI）不能证明核心代码仍在维护，媒体文件单独变化记为 `unknown`。
 - 安全政策、安装脚本、生命周期 hooks、外部下载、遥测、凭据和高权限操作。
 - 涉及免费、额度、API 可用性或商业使用时，核验当前官方条款；可做无副作用 Canary 时实际验证关键访问路径。README 的“free”只记为维护者主张。
 
@@ -126,7 +143,16 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - **推断**：基于证据的判断。
 - **未知**：尚未核验。
 
-使用 [报告模板](assets/report-template.md)，包含证据 URL、核验日期、候选漏斗、淘汰原因、风险、集成成本和建议边界。
+使用 [报告模板](assets/report-template.md)，包含证据 URL、核验日期、候选漏斗、淘汰原因、风险、集成成本和建议边界。先按 `assets/decision.example.json` 写结构化决策，再运行：
+
+```bash
+python3 "<skill-dir>/scripts/github_repos.py" validate-decision \
+  --input "<temporary-directory>/github-repo-scout-decision.json" \
+  --search-results "<temporary-directory>/github-repo-scout-candidates.json" \
+  --output "<temporary-directory>/github-repo-scout-decision-validation.json"
+```
+
+决策中所有固定深审候选都必须出现；推荐项填写连续的 `recommendation_rank`，淘汰项填 `null`。`validate-decision` 会绑定候选指纹、深审集合和 `route_priority`。只有 `ok: true` 才能输出推荐，正文顺序必须按已验证排名；报告 `candidate_fingerprint` 和 `decision_fingerprint`，便于区分证据变化与模型措辞变化。
 
 输出前执行稳定性检查：相同硬门槛和同一证据集必须得到相同 Gate；若结论与已有候选评估不同，必须指出是新增证据、官方条款变化还是候选池变化。不得在没有新证据时把同一候选从首选改成淘汰，或反过来。
 
@@ -148,5 +174,7 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - [评估矩阵](references/scoring.md)：候选通过 Gate 后读取。
 - [安全审查清单](references/security-review.md)：触发安全风险或进入安装 Gate 时读取。
 - [报告模板](assets/report-template.md)：形成最终建议时读取。
-- `assets/query-plan.example.json`：V2.2 查询计划结构示例。
+- `assets/query-plan.example.json`：自适应查询计划结构示例。
+- `assets/decision.example.json`：结构化 Gate 决策示例。
+- `assets/search-results.example.json`：决策校验绑定候选池的最小搜索结果示例。
 - `scripts/github_repos.py`：确定性收集 GitHub 搜索与仓库证据。

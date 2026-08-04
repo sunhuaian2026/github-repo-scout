@@ -1,0 +1,23 @@
+{
+  "base_search_complete": true,
+  "candidate_fingerprint": "example-fingerprint",
+  "requires_long_term_free": true,
+  "platform_access_required": true,
+  "license_use": "use_only",
+  "candidates": [
+    {
+      "repository": "example/tool",
+      "gate": "conditional",
+      "recommended": true,
+      "recommendation_rank": 1,
+      "cost_type": "recurring_free_tier",
+      "cost_evidence_url": "https://example.com/pricing",
+      "cost_reset_period": "monthly",
+      "license_status": "known",
+      "access_route": "official_api",
+      "terms_status": "permitted_with_conditions",
+      "terms_evidence_url": "https://example.com/developer-terms",
+      "deprecated": false
+    }
+  ]
+}

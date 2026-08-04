@@ -80,16 +80,24 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.3.2\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.3.2")
+    if "version: \"2.3.3\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.3.3")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
     if "one_time_trial" not in text or "不能用试用额度替代长期免费" not in text:
         errors.append("SKILL.md must distinguish sustainable free use from one-time trials")
-    if "activity_summary" not in text or "不能单独证明核心代码仍在维护" not in text:
+    if "activity_summary" not in text or "latest_observed_code_commit_at" not in text or "non_core" not in text:
         errors.append("SKILL.md must distinguish code maintenance from documentation-only activity")
     if "相同硬门槛和同一证据集必须得到相同 Gate" not in text:
         errors.append("SKILL.md must require recommendation stability checks")
+    if "platform-plan" not in text or "validate-decision" not in text or "deep_review_candidates" not in text:
+        errors.append("SKILL.md must require deterministic planning, deep review selection and decision validation")
+    if "recommendation_rank" not in text or "route_priority" not in text or "--search-results" not in text:
+        errors.append("SKILL.md must bind candidate evidence and recommendation order")
+    if "access_route" not in text or "terms_status" not in text or "permitted_with_conditions" not in text or "platform_access_required" not in text:
+        errors.append("SKILL.md must bind recommendations to official platform terms")
+    if "base_search_complete: false" not in text or "禁止形成推荐" not in text:
+        errors.append("SKILL.md must fail closed when base discovery is incomplete")
     registry_path = PROJECT_ROOT / "maintenance" / "agents.json"
     try:
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -145,6 +153,33 @@ def validate_smoke() -> list[str]:
     else:
         if doctor.returncode != 0 or not doctor_payload.get("ok"):
             errors.append(f"collector doctor failed: {doctor_payload.get('errors')}")
+
+    platform_plan = run([sys.executable, str(collector), "platform-plan", "Reddit"])
+    try:
+        plan_payload = json.loads(platform_plan.stdout)
+    except json.JSONDecodeError:
+        errors.append("platform-plan did not emit valid JSON")
+    else:
+        roles = [item.get("role") for item in plan_payload.get("queries", [])]
+        if platform_plan.returncode != 0 or roles != ["api-wrapper", "cli-scraper", "mcp", "agent-skill"]:
+            errors.append(f"platform-plan is invalid: {roles}")
+
+    decision = run([
+        sys.executable,
+        str(collector),
+        "validate-decision",
+        "--input",
+        str(SKILL_ROOT / "assets" / "decision.example.json"),
+        "--search-results",
+        str(SKILL_ROOT / "assets" / "search-results.example.json"),
+    ])
+    try:
+        decision_payload = json.loads(decision.stdout)
+    except json.JSONDecodeError:
+        errors.append("validate-decision did not emit valid JSON")
+    else:
+        if decision.returncode != 0 or not decision_payload.get("ok"):
+            errors.append(f"validate-decision failed: {decision_payload.get('errors')}")
 
     with tempfile.TemporaryDirectory(prefix="github-repo-scout-smoke-") as temp:
         home = Path(temp) / "home"

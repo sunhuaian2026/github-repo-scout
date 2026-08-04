@@ -1,0 +1,15 @@
+{
+  "base_search_complete": true,
+  "recommendation_eligible": true,
+  "candidate_fingerprint": "example-fingerprint",
+  "plan": {
+    "route_priority": ["api-wrapper", "mcp", "agent-skill", "cli-scraper"]
+  },
+  "deep_review_candidates": [
+    {
+      "fullName": "example/tool",
+      "reason": "top_api-wrapper",
+      "roles": ["api-wrapper"]
+    }
+  ]
+}

@@ -21,6 +21,13 @@
 - 已完成 `gh auth login`
 - 可访问 GitHub
 
+Codex CLI 的 `workspace-write` 沙箱默认关闭 Shell 网络。使用本 Skill 时需要批准网络访问，或在 Codex 配置中设置：
+
+```toml
+[sandbox_workspace_write]
+network_access = true
+```
+
 检查环境：
 
 ```bash
@@ -192,16 +199,17 @@ $github-repo-scout 帮我找一个离线可用的 PDF OCR 项目，不要安装�
 ## 它会怎样工作
 
 1. 提取任务、硬门槛、偏好和排除项。
-2. 生成 2–3 条基础查询；发现缺口时再安排 0–2 条高信息扩展查询。
+2. 平台工具任务使用固定的 API wrapper、CLI scraper、MCP、Agent Skill 四路查询；默认 SDK 优先，明确要求 Agent 或 CLI 时切换固定优先级。
 3. 自动拒绝低收益扩展，并在缺口关闭后停止下一条查询。
 4. 使用质量加权合并；基础查询权重大于扩展，多查询命中加分，不按 Stars 全局截断。
 5. 先执行许可证、平台、安全和数据边界 Gate。
 6. 深读 README、LICENSE、manifest、安装入口、活动记录和相关源码；区分核心代码更新与 README、赞助商、徽章等文档更新。
 7. 涉及“免费”时，区分永久免费、周期免费额度、一次性试用、付费和未知；试用额度不算长期免费。
 8. 用分维度评级和置信度比较候选，不生成虚假的总分。
-9. 输出 1–3 个有证据的建议；没有合适结果时明确说明。
-10. 最终结论执行稳定性检查：同一硬门槛和证据集必须得到相同 Gate。
-11. 默认停在推荐 Gate，等待用户决定是否进入安装阶段。
+9. 先生成结构化决策；机器校验候选指纹、固定深审集合、成本、平台条款 Gate 和推荐顺序后，再输出 1–3 个建议。
+10. 基础查询失败时停止推荐，不用随机网页搜索重建候选池。
+11. 输出候选和决策指纹；同一硬门槛和证据集必须得到相同 Gate。
+12. 默认停在推荐 Gate，等待用户决定是否进入安装阶段。
 
 报告结构见 [`assets/report-template.md`](skills/github-repo-scout/assets/report-template.md)。
 
@@ -210,19 +218,26 @@ $github-repo-scout 帮我找一个离线可用的 PDF OCR 项目，不要安装�
 所有路径都相对本仓库根目录：
 
 ```bash
+python3 skills/github-repo-scout/scripts/github_repos.py platform-plan Reddit \
+  --output /tmp/github-repo-scout-plan.json
+
 python3 skills/github-repo-scout/scripts/github_repos.py adaptive-search \
-  --plan skills/github-repo-scout/assets/query-plan.example.json \
+  --plan /tmp/github-repo-scout-plan.json \
   --limit-per-query 20 \
   --max-candidates 40 \
   --output /tmp/github-repo-scout-candidates.json
 
 python3 skills/github-repo-scout/scripts/github_repos.py inspect owner/repository \
   --output /tmp/owner-repository-evidence.json
+
+python3 skills/github-repo-scout/scripts/github_repos.py validate-decision \
+  --input skills/github-repo-scout/assets/decision.example.json \
+  --search-results skills/github-repo-scout/assets/search-results.example.json
 ```
 
 查询计划包含 `relevance_terms`、`constraint_terms` 和带 `base` / `expansion` 阶段的查询。脚本只通过 `gh` 访问 GitHub，输出结构化 JSON；`query_decisions` 记录扩展是否采用或提前停止。旧的 `search --query` 保留为兼容模式，不是 Skill 默认路径。
 
-`partial: true` 或非零退出码表示证据不完整，不能当成完整评估。
+`base_search_complete: false` 或 `recommendation_eligible: false` 时禁止形成推荐。`partial: true` 或非零退出码表示证据不完整。
 
 ## 安全边界
 

@@ -22,6 +22,8 @@
 - 深度审查：
 - 推荐：
 - 数据缺口 / 失败查询：
+- 基础查询完整：
+- 候选指纹 `candidate_fingerprint`：
 - 生态原生路线是否覆盖：
 
 ## 结论
@@ -62,8 +64,12 @@
 - 置信度：
 - 来源：
 
-## 稳定性检查
+## 结构化决策与稳定性检查
 
+- `validate-decision`：通过 / 失败
+- 决策指纹 `decision_fingerprint`：
+- 推荐顺序 `recommendation_rank` 与 `route_priority` 是否一致：
+- `access_route` / `terms_status` / 官方条款证据：
 - 相同硬门槛与证据集是否得到相同 Gate：
 - 若结论变化，新增证据 / 条款变化 / 候选池变化：
 
