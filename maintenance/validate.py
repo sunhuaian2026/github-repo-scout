@@ -80,8 +80,8 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.3.4\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.3.4")
+    if "version: \"2.3.5\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.3.5")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
     if "one_time_trial" not in text or "不能用试用额度替代长期免费" not in text:
@@ -96,6 +96,15 @@ def validate_static() -> list[str]:
         errors.append("SKILL.md must bind candidate evidence and recommendation order")
     if "access_route" not in text or "terms_status" not in text or "permitted_with_conditions" not in text or "platform_access_required" not in text:
         errors.append("SKILL.md must bind recommendations to official platform terms")
+    if "### 6. 能力边界" not in text or "不安装或运行候选项目" not in text or "新的独立任务" not in text:
+        errors.append("SKILL.md must stop at comparison and keep candidate execution outside this Skill")
+    if "### 6. 安装是独立 Gate" in text or "进入安装阶段" in text:
+        errors.append("SKILL.md must not define candidate installation as part of comparison")
+    report_template = (SKILL_ROOT / "assets" / "report-template.md").read_text(encoding="utf-8")
+    if "已做源码与官方证据核实，未做运行实测" not in report_template or "新的独立任务" not in report_template:
+        errors.append("report template must keep candidate execution outside the comparison workflow")
+    if "## 下一 Gate" in report_template or "候选安装流程" not in report_template:
+        errors.append("report template must not invite candidate installation")
     if "base_search_complete: false" not in text or "禁止形成推荐" not in text:
         errors.append("SKILL.md must fail closed when base discovery is incomplete")
     registry_path = PROJECT_ROOT / "maintenance" / "agents.json"
