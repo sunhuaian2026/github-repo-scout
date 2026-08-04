@@ -80,8 +80,8 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.3.3\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.3.3")
+    if "version: \"2.3.4\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.3.4")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
     if "one_time_trial" not in text or "不能用试用额度替代长期免费" not in text:

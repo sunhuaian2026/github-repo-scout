@@ -21,12 +21,13 @@
 - 已完成 `gh auth login`
 - 可访问 GitHub
 
-Codex CLI 的 `workspace-write` 沙箱默认关闭 Shell 网络。使用本 Skill 时需要批准网络访问，或在 Codex 配置中设置：
+正常情况下无需修改 Codex 网络配置，先直接运行下面的环境检查。只有检查明确提示 `gh` 网络受阻时，才为本次运行批准网络访问，或临时启动：
 
-```toml
-[sandbox_workspace_write]
-network_access = true
+```bash
+codex -c sandbox_workspace_write.network_access=true
 ```
+
+不建议为了本 Skill 全局永久开启 Shell 网络。
 
 检查环境：
 

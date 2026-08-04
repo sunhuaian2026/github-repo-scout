@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+、GitHub CLI gh 和 GitHub 网络访问。
 metadata:
   author: Sun Hongjun (16414766@qq.com)
-  version: "2.3.3"
+  version: "2.3.4"
 ---
 
 # GitHub Repo Scout
@@ -16,7 +16,7 @@ metadata:
 
 先确定当前加载的 `SKILL.md` 所在目录，以下写作 `<skill-dir>`。所有支持文件都相对 `<skill-dir>` 解析，不相对用户当前工作目录；`<temporary-directory>` 使用当前系统可写的临时目录。
 
-Codex CLI 的 `workspace-write` 沙箱默认关闭 Shell 网络；使用本 Skill 前必须由用户批准网络访问，或设置 `sandbox_workspace_write.network_access = true`。`doctor` 失败时不得用随机网页搜索替代候选发现后继续推荐。
+默认直接运行 `doctor`，不要求用户预先修改网络配置。只有 `doctor` 明确报告 `gh` 网络受阻，且当前使用 Codex CLI 的 `workspace-write` 沙箱时，才提示本次运行批准网络访问，或用 `codex -c sandbox_workspace_write.network_access=true` 临时启动；不要要求全局永久开启。网络仍不可用时不得用随机网页搜索替代候选发现后继续推荐。
 
 ## 不可信内容边界
 
