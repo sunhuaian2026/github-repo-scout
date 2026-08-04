@@ -29,9 +29,33 @@ python3 scripts/github_repos.py doctor
 
 ## 快速安装
 
-在本仓库根目录执行：
+### 方式一：让 Agent 安装（推荐）
+
+把下面这句话直接发给 Codex、Claude Code、Cursor、Gemini CLI 或 Hermes Agent：
+
+> 请将 https://github.com/sunhuaian2026/github-repo-scout 安装到你当前这个 Agent 的用户级 Skills 目录。只安装到当前 Agent，不覆盖已有的非托管同名 Skill；安装完成后验证是否成功识别，并告诉我实际安装路径。
+
+Agent 会根据自身环境选择 Skills CLI 或仓库内的 `install.py`。纯聊天 LLM 如果没有终端和文件写入权限，只能提供安装指导，不能真正完成安装。
+
+### 方式二：通过 npx 安装
 
 ```bash
+npx skills add sunhuaian2026/github-repo-scout
+```
+
+全局安装到指定 Agent，例如 Codex：
+
+```bash
+npx skills add sunhuaian2026/github-repo-scout --skill github-repo-scout --agent codex --global --yes --copy
+```
+
+无需预先安装 Skills CLI；`npx` 会按需运行。Hermes Agent 建议使用下面的本地事务安装器，以保留防覆盖、漂移检查和回滚能力。
+
+### 方式三：本地事务安装
+
+```bash
+git clone https://github.com/sunhuaian2026/github-repo-scout.git
+cd github-repo-scout
 python3 install.py
 ```
 
@@ -43,7 +67,7 @@ python3 install.py
 python3 install.py --list-agents
 ```
 
-指定单个 Agent：
+指定一个或多个 Agent：
 
 ```bash
 python3 install.py --agent hermes
@@ -89,20 +113,6 @@ python3 install.py --uninstall --target ~/.some-agent/skills
 | Windsurf | `~/.codeium/windsurf/skills/github-repo-scout/` |
 
 Codex、Gemini CLI、GitHub Copilot 和 OpenCode 官方均支持 `~/.agents/skills/`；安装器优先复用这份标准副本，避免重复 Skill 和优先级冲突。
-
-也可以直接从公开 GitHub 仓库通过 Skills CLI 安装：
-
-```bash
-npx skills add sunhuaian2026/github-repo-scout
-```
-
-全局安装到指定 Agent，例如 Codex：
-
-```bash
-npx skills add sunhuaian2026/github-repo-scout --skill github-repo-scout --agent codex --global --yes --copy
-```
-
-不想预装 CLI 时无需先执行 `npm install`；`npx` 会按需运行当前 Skills CLI。Hermes Agent 建议继续使用上面的 `python3 install.py --agent hermes`，以保留本项目的事务安装、漂移检查和回滚能力。
 
 ## 维护者验证与高级管理
 
