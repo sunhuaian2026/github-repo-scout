@@ -457,6 +457,47 @@ def simplify_items(items: Any, fields: tuple[str, ...], limit: int = 5) -> list[
     return [{key: item.get(key) for key in fields} for item in items[:limit] if isinstance(item, dict)]
 
 
+def classify_commit_activity(files: list[str]) -> str:
+    if not files:
+        return "unknown"
+    documentation_names = {
+        "code_of_conduct.md",
+        "contributing.md",
+        "funding.yml",
+        "license",
+        "license.md",
+        "security.md",
+    }
+    for raw_path in files:
+        path = raw_path.strip().lower().lstrip("./")
+        name = Path(path).name
+        if path.startswith((".github/", "docs/")):
+            continue
+        if name.startswith("readme") or name in documentation_names:
+            continue
+        return "code"
+    return "docs_only"
+
+
+def summarize_activity(commits: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = {"code": 0, "docs_only": 0, "unknown": 0}
+    code_dates: list[str] = []
+    for commit in commits:
+        kind = str(commit.get("activity_kind") or "unknown")
+        if kind not in counts:
+            kind = "unknown"
+        counts[kind] += 1
+        date = commit.get("date")
+        if kind == "code" and isinstance(date, str) and date:
+            code_dates.append(date)
+    return {
+        "code_commits": counts["code"],
+        "docs_only_commits": counts["docs_only"],
+        "unknown_commits": counts["unknown"],
+        "latest_code_commit_at": max(code_dates) if code_dates else None,
+    }
+
+
 def cmd_inspect(args: argparse.Namespace) -> int:
     if not REPO_RE.fullmatch(args.repo):
         payload = {
@@ -522,11 +563,20 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     if isinstance(commits_raw, list):
         for item in commits_raw[:5]:
             commit = item.get("commit", {}) if isinstance(item, dict) else {}
+            sha = item.get("sha") if isinstance(item, dict) else None
+            detail = collect(f"commit_detail:{sha}", f"repos/{repo}/commits/{sha}") if sha else None
+            changed_files = [
+                str(file.get("filename"))
+                for file in ((detail or {}).get("files") or [])
+                if isinstance(file, dict) and file.get("filename")
+            ]
             commits.append({
-                "sha": item.get("sha") if isinstance(item, dict) else None,
+                "sha": sha,
                 "url": item.get("html_url") if isinstance(item, dict) else None,
                 "date": commit.get("committer", {}).get("date"),
                 "message": (commit.get("message") or "").splitlines()[0],
+                "changed_files": changed_files,
+                "activity_kind": classify_commit_activity(changed_files),
             })
 
     latest_release = None
@@ -553,6 +603,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         "missing_optional": sorted(set(missing_optional)),
         "metadata": simplify_metadata(metadata_raw),
         "recent_commits": commits,
+        "activity_summary": summarize_activity(commits),
         "latest_release": latest_release,
         "tags": simplify_items(tags_raw, ("name", "zipball_url", "tarball_url")),
         "license": license_info,

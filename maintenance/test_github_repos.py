@@ -82,6 +82,30 @@ class AdaptiveSearchTests(unittest.TestCase):
         self.assertEqual(args.command, "adaptive-search")
         self.assertEqual(args.plan, "plan.json")
 
+    def test_docs_only_activity_does_not_count_as_code_maintenance(self) -> None:
+        self.assertEqual(
+            MODULE.classify_commit_activity(["README.md", ".github/FUNDING.yml"]),
+            "docs_only",
+        )
+        self.assertEqual(
+            MODULE.classify_commit_activity(["README.md", "src/client.py"]),
+            "code",
+        )
+        self.assertEqual(MODULE.classify_commit_activity([]), "unknown")
+
+    def test_activity_summary_reports_latest_code_commit(self) -> None:
+        summary = MODULE.summarize_activity(
+            [
+                {"date": "2026-07-11T20:53:23Z", "activity_kind": "docs_only"},
+                {"date": "2025-04-02T10:00:00Z", "activity_kind": "code"},
+                {"date": "2026-01-01T00:00:00Z", "activity_kind": "unknown"},
+            ]
+        )
+        self.assertEqual(summary["code_commits"], 1)
+        self.assertEqual(summary["docs_only_commits"], 1)
+        self.assertEqual(summary["unknown_commits"], 1)
+        self.assertEqual(summary["latest_code_commit_at"], "2025-04-02T10:00:00Z")
+
 
 if __name__ == "__main__":
     unittest.main()

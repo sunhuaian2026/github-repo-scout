@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+、GitHub CLI gh 和 GitHub 网络访问。
 metadata:
   author: Sun Hongjun (16414766@qq.com)
-  version: "2.3.1"
+  version: "2.3.2"
 ---
 
 # GitHub Repo Scout
@@ -37,13 +37,15 @@ GitHub 仓库元数据、README、Issue、SECURITY.md、许可证、源码和 AP
 
 默认解释明确时直接推进并公开假设；只有错误假设会显著改变候选池或带来风险时才提问。
 
+用户只说“免费”时，默认解释为普通个人用量下可长期持续的零新增支出，不把一次性赠金、限时试用或必须付费续用的服务写成免费方案。成本统一分为：`permanent_free`（永久免费或开源本地）、`recurring_free_tier`（周期性免费额度）、`one_time_trial`（一次性试用）、`paid`、`unknown`。后两类不通过“长期免费”硬门槛；周期性免费额度必须核验重置周期、上限和超限后果。
+
 ## 工作流
 
 ### 1. 建立自适应查询计划
 
 创建 JSON 查询计划，结构参考 `assets/query-plan.example.json`：
 
-1. **基础召回 2–3 条**：类别、任务表达和高信息产物词，覆盖不同召回面。
+1. **基础召回 2–3 条**：类别、任务表达和高信息产物词，覆盖不同召回面。任务依赖外部平台或 API 时，其中一条必须搜索生态原生路线，如官方 API、SDK、客户端或主流 wrapper，避免只召回外围 scraper。
 2. **缺口扩展 0–2 条**：只有任务存在明确缺口时，加入领域内高信息约束短语。
 3. `relevance_terms` 用于判断候选是否仍属于任务；`constraint_terms` 只用于发现阶段，不是条件已满足的证据。
 
@@ -93,13 +95,15 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - GitHub 元数据、默认分支、README 和 LICENSE。
 - 源码树、依赖清单、lockfile 与安装入口。
 - `pushed_at`、最近提交、release、Issues / PR 活跃度。
+- `activity_summary` 与最近提交的 `changed_files`：`pushed_at`、README、赞助商、徽章、文档或 CI 更新不能单独证明核心代码仍在维护；必须把核心代码、测试、依赖或发布物更新与文档更新分开。
 - 安全政策、安装脚本、生命周期 hooks、外部下载、遥测、凭据和高权限操作。
+- 涉及免费、额度、API 可用性或商业使用时，核验当前官方条款；可做无副作用 Canary 时实际验证关键访问路径。README 的“free”只记为维护者主张。
 
 `inspect` 负责标准证据采集，不代表源码安全审查已经完成。README 按维护者主张记录；安装、安全、成本和能力边界使用源码或官方文档核验。
 
 出现可执行安装入口、依赖 hooks、外部下载、凭据、高权限或数据外传时，读取 [安全审查清单](references/security-review.md)。任何候选进入安装 Gate 前必须读取该清单。
 
-**完成条件：** 每个入围仓库的许可证、维护状态、依赖入口、安装行为和数据边界都有证据，或明确标为 `unknown`。
+**完成条件：** 每个入围仓库的许可证、核心代码维护状态、成本类型、依赖入口、安装行为和数据边界都有证据，或明确标为 `unknown`。不能用仓库总体更新时间替代核心代码维护证据，也不能用试用额度替代长期免费。
 
 ### 4. 先 Gate，后评级
 
@@ -123,6 +127,8 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - **未知**：尚未核验。
 
 使用 [报告模板](assets/report-template.md)，包含证据 URL、核验日期、候选漏斗、淘汰原因、风险、集成成本和建议边界。
+
+输出前执行稳定性检查：相同硬门槛和同一证据集必须得到相同 Gate；若结论与已有候选评估不同，必须指出是新增证据、官方条款变化还是候选池变化。不得在没有新证据时把同一候选从首选改成淘汰，或反过来。
 
 **完成条件：** 报告字段完整，推荐数量有证据支撑；没有合适候选时明确写“没有足够证据推荐”。
 
