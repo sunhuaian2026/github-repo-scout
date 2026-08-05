@@ -186,7 +186,7 @@ class InstallerCliTests(unittest.TestCase):
             self.assertEqual(first.returncode, 0, first.stderr)
             target = self.target(home, "hermes")
             skill = target / "SKILL.md"
-            skill.write_text(skill.read_text(encoding="utf-8").replace('version: "2.3.6"', 'version: "2.2.1"'), encoding="utf-8")
+            skill.write_text(skill.read_text(encoding="utf-8").replace('version: "2.4.0"', 'version: "2.2.1"'), encoding="utf-8")
             marker = target / ".managed-skill.json"
             payload = json.loads(marker.read_text(encoding="utf-8"))
             payload["content_sha256"] = tree_hash(target)
@@ -194,7 +194,7 @@ class InstallerCliTests(unittest.TestCase):
 
             upgrade = self.run_installer(home, "--agent", "hermes")
             self.assertEqual(upgrade.returncode, 0, upgrade.stderr)
-            self.assertIn('version: "2.3.6"', skill.read_text(encoding="utf-8"))
+            self.assertIn('version: "2.4.0"', skill.read_text(encoding="utf-8"))
 
     def test_modified_managed_copy_still_requires_accept_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

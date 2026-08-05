@@ -4,10 +4,16 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import tempfile
+import threading
 import unittest
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, Mapping
 from unittest import mock
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILL_ROOT = ROOT / "skills" / "github-repo-scout"
@@ -15,6 +21,38 @@ SPEC = importlib.util.spec_from_file_location("github_repos", SKILL_ROOT / "scri
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+
+@contextmanager
+def github_api(responses: Mapping[str, tuple[int, Any, Mapping[str, str]]]):
+    requests: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requests.append(self.path)
+            path = urlparse(self.path).path
+            status, payload, headers = responses.get(path, (404, {"message": "Not Found"}, {}))
+            body = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def row(name: str, description: str, license_key: str = "mit") -> dict:
@@ -35,6 +73,87 @@ class AdaptiveSearchTests(unittest.TestCase):
             "relevance_terms": ["semantic code search"],
             "constraint_terms": ["local", "offline"],
         }
+
+    def test_doctor_allows_anonymous_public_api_access(self) -> None:
+        responses = {
+            "/rate_limit": (
+                200,
+                {"resources": {"core": {"remaining": 60, "reset": 123}, "search": {"remaining": 10, "reset": 123}}},
+                {"X-RateLimit-Limit": "60", "X-RateLimit-Remaining": "60", "X-RateLimit-Reset": "123"},
+            )
+        }
+        with github_api(responses) as (base_url, requests), tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "doctor.json"
+            args = argparse.Namespace(timeout=30, output=str(output))
+            with mock.patch.dict(os.environ, {"GITHUB_API_URL": base_url, "GH_TOKEN": "", "GITHUB_TOKEN": ""}), mock.patch.object(MODULE.shutil, "which", return_value=None):
+                self.assertEqual(MODULE.cmd_doctor(args), 0)
+            payload = json.loads(output.read_text(encoding="utf-8"))
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["access_mode"], "anonymous")
+        self.assertFalse(payload["authenticated"])
+        self.assertIn("/rate_limit", requests)
+
+    def test_doctor_fails_closed_when_anonymous_quota_is_exhausted(self) -> None:
+        responses = {
+            "/rate_limit": (
+                200,
+                {"resources": {"core": {"remaining": 0, "reset": 456}, "search": {"remaining": 0, "reset": 456}}},
+                {"X-RateLimit-Limit": "60", "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "456"},
+            )
+        }
+        with github_api(responses) as (base_url, _), tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "doctor.json"
+            args = argparse.Namespace(timeout=30, output=str(output))
+            with mock.patch.dict(os.environ, {"GITHUB_API_URL": base_url, "GH_TOKEN": "", "GITHUB_TOKEN": ""}), mock.patch.object(MODULE.shutil, "which", return_value=None):
+                self.assertEqual(MODULE.cmd_doctor(args), 1)
+            payload = json.loads(output.read_text(encoding="utf-8"))
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["errors"][0]["kind"], "rate_limited")
+
+    def test_adaptive_search_works_without_gh_or_token(self) -> None:
+        api_row = {
+            "full_name": "example/public-tool",
+            "html_url": "https://github.com/example/public-tool",
+            "description": "Public local search tool",
+            "stargazers_count": 10,
+            "forks_count": 2,
+            "open_issues_count": 1,
+            "language": "Python",
+            "license": {"key": "mit"},
+            "archived": False,
+            "disabled": False,
+            "fork": False,
+            "private": False,
+            "pushed_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+        responses = {
+            "/search/repositories": (
+                200,
+                {"total_count": 1, "incomplete_results": False, "items": [api_row]},
+                {"X-RateLimit-Limit": "10", "X-RateLimit-Remaining": "9", "X-RateLimit-Reset": "123"},
+            )
+        }
+        plan = {
+            "license_required": False,
+            "relevance_terms": ["public", "search"],
+            "constraint_terms": [],
+            "queries": [
+                {"role": "category", "phase": "base", "query": "public search"},
+                {"role": "task", "phase": "base", "query": "local search"},
+            ],
+        }
+        with github_api(responses) as (base_url, requests), tempfile.TemporaryDirectory() as temp:
+            plan_path = Path(temp) / "plan.json"
+            output_path = Path(temp) / "results.json"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+            args = argparse.Namespace(plan=str(plan_path), limit_per_query=10, max_candidates=10, timeout=30, output=str(output_path))
+            with mock.patch.dict(os.environ, {"GITHUB_API_URL": base_url, "GH_TOKEN": "", "GITHUB_TOKEN": ""}), mock.patch.object(MODULE.shutil, "which", return_value=None):
+                self.assertEqual(MODULE.cmd_adaptive_search(args), 0)
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+        self.assertTrue(payload["recommendation_eligible"])
+        self.assertEqual(payload["candidates"][0]["fullName"], "example/public-tool")
+        self.assertEqual(len([path for path in requests if path.startswith("/search/repositories?")]), 2)
 
     def test_low_yield_expansion_is_rejected(self) -> None:
         rows = [
@@ -157,7 +276,7 @@ class AdaptiveSearchTests(unittest.TestCase):
                 ([], MODULE.error("query one", "command_failed", "network blocked")),
                 ([row("example/reddit", "Reddit MCP")], None),
             ]
-            with mock.patch.object(MODULE, "require_gh", return_value="gh"), mock.patch.object(MODULE, "search_rows", side_effect=failures):
+            with mock.patch.object(MODULE, "search_rows", side_effect=failures):
                 self.assertEqual(MODULE.cmd_adaptive_search(args), 2)
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertFalse(payload["base_search_complete"])

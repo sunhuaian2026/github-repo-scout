@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -13,12 +14,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-SEARCH_FIELDS = (
-    "fullName,url,description,stargazersCount,forksCount,openIssuesCount,"
-    "language,license,isArchived,isDisabled,isFork,isPrivate,pushedAt,updatedAt"
-)
 MANIFESTS = {
     "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Cargo.toml",
     "go.mod", "Gemfile", "pom.xml", "build.gradle", "Dockerfile",
@@ -67,39 +67,109 @@ def emit(payload: dict[str, Any], output: str | None) -> None:
 
 
 def base_payload() -> dict[str, Any]:
-    return {"schema_version": "2.3", "generated_at": now_iso()}
+    return {"schema_version": "2.4", "generated_at": now_iso()}
 
 
-def require_gh() -> str:
-    path = shutil.which("gh")
-    if not path:
-        raise RuntimeError("GitHub CLI 'gh' is not installed or not in PATH")
-    return path
+def optional_token() -> tuple[str | None, str]:
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value, name
+    gh = shutil.which("gh")
+    if gh:
+        result = run([gh, "auth", "token"], 10)
+        value = result.stdout.strip()
+        if result.returncode == 0 and value:
+            return value, "gh"
+    return None, "none"
+
+
+class GitHubClient:
+    def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        self.base_url = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+        self.token, self.auth_source = optional_token()
+        self.timeout = timeout
+        self.last_rate_limit: dict[str, Any] = {}
+
+    @property
+    def authenticated(self) -> bool:
+        return bool(self.token)
+
+    def request(self, endpoint: str, accept: str = "application/vnd.github+json") -> tuple[bytes | None, str | None, str | None]:
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        headers = {
+            "Accept": accept,
+            "User-Agent": "github-repo-scout/2.4.0",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urlrequest.Request(url, headers=headers, method="GET")
+        try:
+            with urlrequest.urlopen(request, timeout=self.timeout) as response:
+                body = response.read()
+                self.last_rate_limit = {
+                    "limit": response.headers.get("X-RateLimit-Limit"),
+                    "remaining": response.headers.get("X-RateLimit-Remaining"),
+                    "reset": response.headers.get("X-RateLimit-Reset"),
+                    "resource": response.headers.get("X-RateLimit-Resource"),
+                }
+                return body, None, None
+        except urlerror.HTTPError as exc:
+            remaining = exc.headers.get("X-RateLimit-Remaining") if exc.headers else None
+            reset = exc.headers.get("X-RateLimit-Reset") if exc.headers else None
+            if exc.code in (403, 429) and remaining == "0":
+                return None, "rate_limited", f"GitHub API rate limit exhausted; reset={reset or 'unknown'}"
+            if exc.code == 404:
+                return None, "not_found", f"GitHub API returned HTTP 404 for {endpoint}"
+            return None, "http_error", f"GitHub API returned HTTP {exc.code} for {endpoint}"
+        except urlerror.URLError as exc:
+            return None, "network_error", str(exc.reason)
+        except (OSError, TimeoutError) as exc:
+            return None, "network_error", str(exc)
+
+    def json(self, endpoint: str) -> tuple[Any | None, str | None, str | None]:
+        body, kind, message = self.request(endpoint)
+        if kind:
+            return None, kind, message
+        try:
+            return json.loads((body or b"").decode("utf-8")), None, None
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return None, "invalid_json", f"invalid JSON from {endpoint}: {exc}"
+
+    def raw(self, endpoint: str) -> tuple[str | None, str | None, str | None]:
+        body, kind, message = self.request(endpoint, "application/vnd.github.raw+json")
+        if kind:
+            return None, kind, message
+        try:
+            return (body or b"").decode("utf-8"), None, None
+        except UnicodeDecodeError as exc:
+            return None, "invalid_text", f"invalid UTF-8 from {endpoint}: {exc}"
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    try:
-        gh = require_gh()
-    except RuntimeError as exc:
-        payload = {**base_payload(), "ok": False, "partial": True, "errors": [error("gh", "missing", str(exc))]}
-        emit(payload, args.output)
-        return 1
-
-    version = run([gh, "--version"], args.timeout)
-    auth = run([gh, "auth", "status"], args.timeout)
+    client = GitHubClient(args.timeout)
+    data, kind, message = client.json("rate_limit")
     errors: list[dict[str, str]] = []
-    if version.returncode != 0:
-        errors.append(error("gh_version", "command_failed", version.stderr.strip() or "unknown error"))
-    if auth.returncode != 0:
-        errors.append(error("gh_auth", "not_authenticated", "gh auth status failed"))
+    if kind:
+        errors.append(error("github_api", kind, message or "GitHub API check failed"))
+    resources = data.get("resources", {}) if isinstance(data, dict) else {}
+    exhausted = [
+        name for name in ("core", "search")
+        if isinstance(resources.get(name), dict) and resources[name].get("remaining") == 0
+    ]
+    if exhausted:
+        errors.append(error("github_api", "rate_limited", f"GitHub API quota exhausted: {', '.join(exhausted)}"))
     payload = {
         **base_payload(),
         "ok": not errors,
         "partial": bool(errors),
         "errors": errors,
-        "gh_path": gh,
-        "version": version.stdout.splitlines()[0] if version.stdout else "unknown",
-        "auth_ok": auth.returncode == 0,
+        "api_url": client.base_url,
+        "access_mode": "authenticated" if client.authenticated else "anonymous",
+        "authenticated": client.authenticated,
+        "auth_source": client.auth_source,
+        "rate_limit": resources,
     }
     emit(payload, args.output)
     return 0 if not errors else 1
@@ -361,22 +431,38 @@ def load_query_plan(path: str) -> dict[str, Any]:
     return data
 
 
+def normalize_search_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "fullName": row.get("full_name"),
+        "url": row.get("html_url"),
+        "description": row.get("description"),
+        "stargazersCount": row.get("stargazers_count"),
+        "forksCount": row.get("forks_count"),
+        "openIssuesCount": row.get("open_issues_count"),
+        "language": row.get("language"),
+        "license": row.get("license"),
+        "isArchived": row.get("archived"),
+        "isDisabled": row.get("disabled"),
+        "isFork": row.get("fork"),
+        "isPrivate": row.get("private"),
+        "pushedAt": row.get("pushed_at"),
+        "updatedAt": row.get("updated_at"),
+    }
+
+
 def search_rows(
-    gh: str, query: str, limit: int, timeout: int,
+    client: GitHubClient, query: str, limit: int, timeout: int,
 ) -> tuple[list[dict[str, Any]], dict[str, str] | None]:
-    result = run([
-        gh, "search", "repos", query,
-        "--limit", str(limit), "--json", SEARCH_FIELDS,
-    ], timeout)
-    if result.returncode != 0:
-        return [], error(query, "command_failed", result.stderr.strip() or "unknown gh error")
-    try:
-        rows = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        return [], error(query, "invalid_json", str(exc))
-    if not isinstance(rows, list):
-        return [], error(query, "invalid_shape", "gh search output is not a list")
-    valid = [row for row in rows if isinstance(row, dict) and row.get("fullName")]
+    del timeout
+    endpoint = f"search/repositories?q={urlparse.quote_plus(query)}&per_page={min(limit, 100)}"
+    data, kind, message = client.json(endpoint)
+    if kind:
+        return [], error(query, kind, message or "GitHub repository search failed")
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return [], error(query, "invalid_shape", "GitHub search response items is not a list")
+    rows = [normalize_search_row(row) for row in items if isinstance(row, dict)]
+    valid = [row for row in rows if row.get("fullName")]
     return valid, None
 
 
@@ -397,7 +483,7 @@ def merge_rows(
 
 
 def cmd_adaptive_search(args: argparse.Namespace) -> int:
-    gh = require_gh()
+    client = GitHubClient(args.timeout)
     plan = load_query_plan(args.plan)
     merged: dict[str, dict[str, Any]] = {}
     decisions: list[dict[str, Any]] = []
@@ -411,7 +497,7 @@ def cmd_adaptive_search(args: argparse.Namespace) -> int:
         if phase == "expansion" and stopped:
             decisions.append({"role": role, "phase": phase, "query": query, "status": "skipped_gap_closed"})
             continue
-        rows, failure = search_rows(gh, query, args.limit_per_query, args.timeout)
+        rows, failure = search_rows(client, query, args.limit_per_query, args.timeout)
         raw_hits += len(rows)
         if failure:
             errors.append(failure)
@@ -445,7 +531,10 @@ def cmd_adaptive_search(args: argparse.Namespace) -> int:
     candidate_fingerprint = hashlib.sha256(
         json.dumps(fingerprint_rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    deep_review_candidates = select_deep_review(ranked["selected"], route_priority=plan.get("route_priority"))
+    deep_review_limit = 5 if client.authenticated else 3
+    deep_review_candidates = select_deep_review(
+        ranked["selected"], maximum=deep_review_limit, route_priority=plan.get("route_priority")
+    )
     payload = {
         **base_payload(),
         "partial": bool(errors),
@@ -453,6 +542,9 @@ def cmd_adaptive_search(args: argparse.Namespace) -> int:
         "recommendation_eligible": base_search_complete,
         "candidate_fingerprint": candidate_fingerprint,
         "deep_review_candidates": deep_review_candidates,
+        "access_mode": "authenticated" if client.authenticated else "anonymous",
+        "deep_review_limit": deep_review_limit,
+        "rate_limit": client.last_rate_limit,
         "plan": plan,
         "query_decisions": decisions,
         "selection": {
@@ -476,30 +568,16 @@ def cmd_adaptive_search(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    gh = require_gh()
+    client = GitHubClient(args.timeout)
     errors: list[dict[str, str]] = []
     rows_by_query: list[list[dict[str, Any]]] = []
     merged: dict[str, dict[str, Any]] = {}
     raw_hits = 0
 
     for query in args.query:
-        result = run([
-            gh, "search", "repos", query,
-            "--limit", str(args.limit_per_query),
-            "--json", SEARCH_FIELDS,
-        ], args.timeout)
-        if result.returncode != 0:
-            errors.append(error(query, "command_failed", result.stderr.strip() or "unknown gh error"))
-            rows_by_query.append([])
-            continue
-        try:
-            rows = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            errors.append(error(query, "invalid_json", str(exc)))
-            rows_by_query.append([])
-            continue
-        if not isinstance(rows, list):
-            errors.append(error(query, "invalid_shape", "gh search output is not a list"))
+        rows, failure = search_rows(client, query, args.limit_per_query, args.timeout)
+        if failure:
+            errors.append(failure)
             rows_by_query.append([])
             continue
 
@@ -543,23 +621,14 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 2 if errors else 0
 
 
-def gh_api_json(gh: str, endpoint: str, timeout: int) -> tuple[Any | None, str | None, str | None]:
-    result = run([gh, "api", endpoint], timeout)
-    if result.returncode != 0:
-        kind = "not_found" if "HTTP 404" in result.stderr else "command_failed"
-        return None, kind, result.stderr.strip() or f"gh api failed for {endpoint}"
-    try:
-        return json.loads(result.stdout), None, None
-    except json.JSONDecodeError as exc:
-        return None, "invalid_json", f"invalid JSON from {endpoint}: {exc}"
+def gh_api_json(client: GitHubClient, endpoint: str, timeout: int) -> tuple[Any | None, str | None, str | None]:
+    del timeout
+    return client.json(endpoint)
 
 
-def gh_api_raw(gh: str, endpoint: str, timeout: int) -> tuple[str | None, str | None, str | None]:
-    result = run([gh, "api", endpoint, "-H", "Accept: application/vnd.github.raw+json"], timeout)
-    if result.returncode != 0:
-        kind = "not_found" if "HTTP 404" in result.stderr else "command_failed"
-        return None, kind, result.stderr.strip() or f"gh api failed for {endpoint}"
-    return result.stdout, None, None
+def gh_api_raw(client: GitHubClient, endpoint: str, timeout: int) -> tuple[str | None, str | None, str | None]:
+    del timeout
+    return client.raw(endpoint)
 
 
 def simplify_metadata(data: Any) -> dict[str, Any] | None:
@@ -642,13 +711,14 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         emit(payload, args.output)
         return 1
 
-    gh = require_gh()
+    client = GitHubClient(args.timeout)
     repo = args.repo
     errors: list[dict[str, str]] = []
     missing_optional: list[str] = []
+    omitted_for_quota: list[str] = []
 
     def collect(label: str, endpoint: str, optional: bool = False) -> Any | None:
-        data, kind, message = gh_api_json(gh, endpoint, args.timeout)
+        data, kind, message = gh_api_json(client, endpoint, args.timeout)
         if kind:
             if optional and kind == "not_found":
                 missing_optional.append(label)
@@ -657,7 +727,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         return data
 
     def collect_raw(label: str, endpoint: str, optional: bool = False) -> str | None:
-        data, kind, message = gh_api_raw(gh, endpoint, args.timeout)
+        data, kind, message = gh_api_raw(client, endpoint, args.timeout)
         if kind:
             if optional and kind == "not_found":
                 missing_optional.append(label)
@@ -668,12 +738,14 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     metadata_raw = collect("metadata", f"repos/{repo}")
     commits_raw = collect("commits", f"repos/{repo}/commits?per_page=5")
     release_raw = collect("latest_release", f"repos/{repo}/releases/latest", optional=True)
-    tags_raw = collect("tags", f"repos/{repo}/tags?per_page=5", optional=True)
+    tags_raw = collect("tags", f"repos/{repo}/tags?per_page=5", optional=True) if client.authenticated else None
     license_raw = collect("license", f"repos/{repo}/license", optional=True)
     root_raw = collect("root_contents", f"repos/{repo}/contents")
     issues_raw = collect("issues", f"repos/{repo}/issues?state=open&sort=updated&per_page=5", optional=True)
     pulls_raw = collect("pulls", f"repos/{repo}/pulls?state=open&sort=updated&per_page=5", optional=True)
-    contributors_raw = collect("contributors", f"repos/{repo}/contributors?per_page=5", optional=True)
+    contributors_raw = collect("contributors", f"repos/{repo}/contributors?per_page=5", optional=True) if client.authenticated else None
+    if not client.authenticated:
+        omitted_for_quota.extend(["tags", "contributors"])
     readme = collect_raw("readme", f"repos/{repo}/readme", optional=True)
 
     security = collect_raw("security_policy", f"repos/{repo}/contents/SECURITY.md", optional=True)
@@ -684,9 +756,15 @@ def cmd_inspect(args: argparse.Namespace) -> int:
 
     root_files = simplify_items(root_raw, ("name", "type", "html_url"), limit=500)
     manifests: dict[str, dict[str, Any]] = {}
+    manifest_limit = None if client.authenticated else 4
+    manifest_count = 0
     for item in root_files:
         name = item.get("name")
         if name in MANIFESTS:
+            if manifest_limit is not None and manifest_count >= manifest_limit:
+                omitted_for_quota.append(f"manifest:{name}")
+                continue
+            manifest_count += 1
             text = collect_raw(f"manifest:{name}", f"repos/{repo}/contents/{name}", optional=True)
             if text is not None:
                 manifests[str(name)] = {
@@ -733,6 +811,10 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     payload = {
         **base_payload(),
         "repository": repo,
+        "access_mode": "authenticated" if client.authenticated else "anonymous",
+        "collection_profile": "full" if client.authenticated else "anonymous_budgeted",
+        "omitted_for_quota": omitted_for_quota,
+        "rate_limit": client.last_rate_limit,
         "partial": bool(errors),
         "errors": errors,
         "missing_optional": sorted(set(missing_optional)),
@@ -946,7 +1028,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=bounded_int(5, 600), default=DEFAULT_TIMEOUT)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    doctor = sub.add_parser("doctor", help="check gh installation and authentication")
+    doctor = sub.add_parser("doctor", help="check GitHub API access and available quota")
     doctor.add_argument("--output")
     doctor.set_defaults(func=cmd_doctor)
 

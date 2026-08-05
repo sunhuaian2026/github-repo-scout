@@ -80,8 +80,13 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.3.6\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.3.6")
+    if "version: \"2.4.0\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.4.0")
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    if "公开仓库默认匿名读取" not in text or "公开仓库默认匿名读取" not in readme:
+        errors.append("Skill and README must document anonymous public-repository access")
+    if "- 已完成 `gh auth login`" in readme or "需要 Python 3.10+、GitHub CLI gh" in compatibility:
+        errors.append("GitHub CLI authentication must not be a runtime prerequisite")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
     scoring = (SKILL_ROOT / "references" / "scoring.md").read_text(encoding="utf-8")
@@ -228,7 +233,7 @@ def validate_smoke() -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--smoke", action="store_true", help="run gh doctor and install/check/uninstall cycle")
+    parser.add_argument("--smoke", action="store_true", help="run API doctor and install/check/uninstall cycle")
     args = parser.parse_args()
 
     errors = validate_static()

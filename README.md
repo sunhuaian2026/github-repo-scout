@@ -51,21 +51,13 @@
 ## 前置条件
 
 - Python 3.10+
-- [GitHub CLI `gh`](https://cli.github.com/)
-- 已完成 `gh auth login`
 - 可访问 GitHub
+
+公开仓库默认匿名读取，不要求安装或登录 GitHub CLI。`GH_TOKEN`、`GITHUB_TOKEN` 或已有 `gh` 登录仅用于提高 API 额度和访问私有仓库。
 
 ## 快速安装
 
-### 方式一：让 Agent 安装（推荐）
-
-把下面这句话直接发给 Codex、Claude Code、Cursor、Gemini CLI 或 Hermes Agent：
-
-> 请将 https://github.com/sunhuaian2026/github-repo-scout 安装到你当前这个 Agent 的用户级 Skills 目录。只安装到当前 Agent，不覆盖已有的非托管同名 Skill；安装完成后验证是否成功识别，并告诉我实际安装路径。
-
-Agent 会根据自身环境选择 Skills CLI 或仓库内的 `install.py`。纯聊天 LLM 如果没有终端和文件写入权限，只能提供安装指导，不能真正完成安装。
-
-### 方式二：通过 npx 安装
+### 方式一：通过 npx 安装（推荐）
 
 ```bash
 npx skills add sunhuaian2026/github-repo-scout
@@ -77,9 +69,17 @@ npx skills add sunhuaian2026/github-repo-scout
 npx skills add sunhuaian2026/github-repo-scout --skill github-repo-scout --agent codex --global --yes --copy
 ```
 
-无需预先安装 Skills CLI；`npx` 会按需运行，并且只复制 `skills/github-repo-scout/` 下的运行包。Hermes Agent 建议使用下面的本地事务安装器，以保留防覆盖、漂移检查和回滚能力。
+无需预先安装 Skills CLI；`npx` 会按需运行，并从 Git 仓库复制 `skills/github-repo-scout/` 下的最新运行包。Hermes Agent 建议使用下面的本地事务安装器，以保留防覆盖、漂移检查和回滚能力。
 
-Skills CLI 将 `~/.agents/skills/` 作为多 Agent 通用目录；其 JSON 列表中的 `agents` 可能为空，不能单独作为失败判断。验收以目标路径、文件哈希和当前 Agent 的实际发现结果为准。
+Skills CLI 将 `~/.agents/skills/` 作为多 Agent 通用目录；其 JSON 列表中的 `agents` 可能为空，不能单独作为失败判断。验收以目标路径、`SKILL.md` 中的 `metadata.version` 和当前 Agent 的实际发现结果为准。
+
+### 方式二：让 Agent 安装
+
+把下面这句话直接发给 Codex、Claude Code、Cursor、Gemini CLI 或 Hermes Agent：
+
+> 请通过 `npx skills add sunhuaian2026/github-repo-scout` 或 Git clone 安装到当前 Agent 的用户级 Skills 目录，不使用网页快照或缓存的 raw 文件。安装完成后读取已安装 `SKILL.md` 的 `metadata.version`，并告诉我版本和实际路径。
+
+纯聊天 LLM 如果没有终端和文件写入权限，只能提供安装指导，不能真正完成安装。
 
 ### 方式三：本地事务安装
 
@@ -196,13 +196,15 @@ python3 skills/github-repo-scout/scripts/github_repos.py validate-decision \
   --search-results skills/github-repo-scout/assets/search-results.example.json
 ```
 
-查询计划包含 `relevance_terms`、`constraint_terms` 和带 `base` / `expansion` 阶段的查询。脚本只通过 `gh` 访问 GitHub，输出结构化 JSON；`query_decisions` 记录扩展是否采用或提前停止。旧的 `search --query` 保留为兼容模式，不是 Skill 默认路径。
+查询计划包含 `relevance_terms`、`constraint_terms` 和带 `base` / `expansion` 阶段的查询。脚本通过 GitHub REST API 获取结构化数据；公开仓库默认匿名访问，检测到 Token 或已有 `gh` 登录时自动使用认证额度。`query_decisions` 记录扩展是否采用或提前停止。旧的 `search --query` 保留为兼容模式，不是 Skill 默认路径。
 
-`base_search_complete: false` 或 `recommendation_eligible: false` 时禁止形成推荐。`partial: true` 或非零退出码表示证据不完整。
+`base_search_complete: false` 或 `recommendation_eligible: false` 时禁止形成推荐。`partial: true` 或非零退出码表示证据不完整。匿名模式最多深审 3 个候选，认证模式最多 5 个。
 
 ## 故障排查
 
-Skill 会在运行时自动检查 GitHub CLI 和网络访问。若 Codex 明确报告沙箱阻止 `gh` 访问 GitHub，可临时启用本次会话的网络权限：
+Skill 会在运行时自动检查 GitHub API、访问模式和剩余额度。匿名额度耗尽时，可以等待额度恢复，也可以设置 `GH_TOKEN` / `GITHUB_TOKEN` 或执行 `gh auth login` 获得认证额度。
+
+若 Codex 明确报告沙箱阻止访问 GitHub，可临时启用本次会话的网络权限：
 
 ```bash
 codex -c sandbox_workspace_write.network_access=true

@@ -2,10 +2,10 @@
 name: github-repo-scout
 description: GitHub 仓库侦察与选型。Use when 用户要寻找或比较开源项目、评估仓库能否采用，或寻找现有方案的替代品。
 license: MIT
-compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+、GitHub CLI gh 和 GitHub 网络访问。
+compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+ 和 GitHub 网络访问；公开仓库无需 GitHub 登录。
 metadata:
   author: Sun Hongjun (16414766@qq.com)
-  version: "2.3.6"
+  version: "2.4.0"
 ---
 
 # GitHub Repo Scout
@@ -16,7 +16,7 @@ metadata:
 
 先确定当前加载的 `SKILL.md` 所在目录，以下写作 `<skill-dir>`。所有支持文件都相对 `<skill-dir>` 解析，不相对用户当前工作目录；`<temporary-directory>` 使用当前系统可写的临时目录。
 
-默认直接运行 `doctor`，不要求用户预先修改网络配置。只有 `doctor` 明确报告 `gh` 网络受阻，且当前使用 Codex CLI 的 `workspace-write` 沙箱时，才提示本次运行批准网络访问，或用 `codex -c sandbox_workspace_write.network_access=true` 临时启动；不要要求全局永久开启。网络仍不可用时不得用随机网页搜索替代候选发现后继续推荐。
+默认直接运行 `doctor` 检查 GitHub REST API 和剩余额度。公开仓库默认匿名读取；若环境中存在 `GH_TOKEN`、`GITHUB_TOKEN` 或已登录的 `gh`，自动使用认证额度。只有访问私有仓库时才要求认证。网络仍不可用时不得用随机网页搜索替代候选发现后继续推荐。
 
 ## 能力边界
 
@@ -76,7 +76,7 @@ python3 "<skill-dir>/scripts/github_repos.py" adaptive-search \
 
 扩展查询 Top-10 至少带来 2 个可信新候选，或与基础池重合 2 个，才进入合并；带来 3 个可信新候选或重合 3 个时停止下一条扩展。`query_decisions` 记录接受、拒绝和提前停止。
 
-`doctor` 必须先通过。任一基础查询失败时，`base_search_complete: false`、`recommendation_eligible: false`；此时只能报告阻塞和已有线索，禁止形成推荐、禁止改用随机网页搜索重建候选池。扩展查询失败可标为 `partial`，但必须说明影响。
+`doctor` 必须先通过。匿名模式下固定深审候选最多 3 个，认证模式最多 5 个，并在搜索结果中记录 `access_mode`、`deep_review_limit` 与剩余额度。任一基础查询失败时，`base_search_complete: false`、`recommendation_eligible: false`；此时只能报告阻塞和已有线索，禁止形成推荐、禁止改用随机网页搜索重建候选池。扩展查询失败可标为 `partial`，但必须说明影响。
 
 **完成条件：** 基础查询召回面不同，扩展由缺口驱动；所有计划查询都有执行、失败、拒绝或跳过记录，假设和数据缺口已公开。
 
@@ -97,7 +97,7 @@ python3 "<skill-dir>/scripts/github_repos.py" adaptive-search \
 
 ### 3. 深度审查入围仓库
 
-`adaptive-search` 输出固定的 `deep_review_candidates`：依次覆盖 API wrapper、MCP、Agent Skill、CLI scraper，再按排序补足，总数最多 5 个。必须只深审这组候选；不得因模型偏好自行换一批。某候选证据采集失败时保留失败记录，不用随机网页搜索替换仓库。
+`adaptive-search` 输出固定的 `deep_review_candidates`：依次覆盖 API wrapper、MCP、Agent Skill、CLI scraper，再按排序补足；匿名模式最多 3 个，认证模式最多 5 个。必须只深审这组候选；不得因模型偏好自行换一批。某候选证据采集失败时保留失败记录，不用随机网页搜索替换仓库。
 
 对入围候选逐个运行：
 
@@ -115,7 +115,7 @@ python3 "<skill-dir>/scripts/github_repos.py" inspect OWNER/REPO \
 - 安全政策、安装脚本、生命周期 hooks、外部下载、遥测、凭据和高权限操作。
 - 涉及免费、额度、API 可用性或商业使用时，核验当前官方条款；可做无副作用 Canary 时实际验证关键访问路径。README 的“free”只记为维护者主张。
 
-`inspect` 负责标准证据采集，不代表源码安全审查已经完成。README 按维护者主张记录；安装、安全、成本和能力边界使用源码或官方文档核验。
+`inspect` 负责标准证据采集，不代表源码安全审查已经完成。匿名模式使用 `anonymous_budgeted` 采集档位：保留核心证据，省略 tags、contributors，并最多读取 4 个根目录 manifest；省略项写入 `omitted_for_quota`，不得当作已核验。README 按维护者主张记录；安装、安全、成本和能力边界使用源码或官方文档核验。
 
 出现可执行安装入口、依赖 hooks、外部下载、凭据、高权限或数据外传时，读取 [安全审查清单](references/security-review.md) 评估采用风险，但不执行候选代码。
 
