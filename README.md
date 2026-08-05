@@ -14,26 +14,46 @@
 - 区分事实、维护者主张、推断和未知。
 - 能力边界止于发现、证据核实、比较和推荐；不安装或运行候选项目。
 
+## 怎么用
+
+安装后，直接向 Agent 描述选型需求。
+
+### 寻找项目
+
+```text
+帮我找一个可以本地部署、支持中文 OCR 的开源项目，比较许可证、维护状态和部署成本。
+```
+
+### 比较已有候选
+
+```text
+比较 Continue、Cline 和 Aider，重点看隐私边界、模型支持、维护状态和迁移成本。
+```
+
+### 带硬门槛选型
+
+```text
+给商业项目找一个允许修改和分发的开源向量数据库，要求可自托管，不依赖外部 SaaS。
+```
+
+### 审查单个仓库
+
+```text
+审查 OWNER/REPO 是否值得采用，重点核验许可证、维护状态、安装行为、遥测和数据边界。
+```
+
+需要确保 Skill 被明确调用时：
+
+- Codex CLI：`$github-repo-scout 你的需求`
+- Claude Code：`/github-repo-scout 你的需求`
+- Hermes Agent：直接说“使用 github-repo-scout……”
+
 ## 前置条件
 
 - Python 3.10+
 - [GitHub CLI `gh`](https://cli.github.com/)
 - 已完成 `gh auth login`
 - 可访问 GitHub
-
-正常情况下无需修改 Codex 网络配置，先直接运行下面的环境检查。只有检查明确提示 `gh` 网络受阻时，才为本次运行批准网络访问，或临时启动：
-
-```bash
-codex -c sandbox_workspace_write.network_access=true
-```
-
-不建议为了本 Skill 全局永久开启 Shell 网络。
-
-检查环境：
-
-```bash
-python3 skills/github-repo-scout/scripts/github_repos.py doctor
-```
 
 ## 快速安装
 
@@ -137,66 +157,6 @@ python3 maintenance/manage_skill.py check --platform all
 
 管理器拒绝覆盖非托管同名目录，并用内容哈希检查副本漂移。详细机制见 [`maintenance/platform-support.md`](maintenance/platform-support.md)。
 
-## 怎么用
-
-### 直接用自然语言
-
-兼容 Agent 都可以直接描述需求，例如：
-
-#### 查找项目
-
-```text
-帮我找一个可以本地部署、不开外部 API、支持中文 OCR 的开源项目，比较许可证、维护状态和部署成本。
-```
-
-#### 比较项目
-
-```text
-比较 Continue、Cline 和 Aider，重点看隐私边界、模型提供方、最近维护状态和退出成本，不要安装。
-```
-
-#### 带硬门槛选型
-
-```text
-给这个商业项目找一个允许修改和分发的开源向量数据库，先列硬门槛和候选漏斗。
-```
-
-#### 找替代品
-
-```text
-找几个 PostHog 的轻量自托管替代品，不能依赖外部 SaaS，并核验是否使用 Cookie。
-```
-
-#### 单仓库安全审查
-
-```text
-审查 OWNER/REPO 是否值得安装，重点检查安装脚本、依赖 hooks、遥测、凭据和数据外传；只评估，不要安装。
-```
-
-#### 先选型，再安装
-
-```text
-先选出最合适的两个项目并给出证据；我确认仓库、固定版本和写入范围后再安装。
-```
-
-### 显式调用
-
-**Codex CLI**
-
-```text
-$github-repo-scout 帮我找一个离线可用的 PDF OCR 项目，不要安装。
-```
-
-**Claude Code**
-
-```text
-/github-repo-scout 帮我比较三个本地代码检索仓库，只做评估。
-```
-
-**Hermes Agent**
-
-直接说“使用 `github-repo-scout` 查找……”，或使用上面的自然语言请求。
-
 ## 它会怎样工作
 
 1. 提取任务、硬门槛、偏好和排除项。
@@ -239,6 +199,16 @@ python3 skills/github-repo-scout/scripts/github_repos.py validate-decision \
 查询计划包含 `relevance_terms`、`constraint_terms` 和带 `base` / `expansion` 阶段的查询。脚本只通过 `gh` 访问 GitHub，输出结构化 JSON；`query_decisions` 记录扩展是否采用或提前停止。旧的 `search --query` 保留为兼容模式，不是 Skill 默认路径。
 
 `base_search_complete: false` 或 `recommendation_eligible: false` 时禁止形成推荐。`partial: true` 或非零退出码表示证据不完整。
+
+## 故障排查
+
+Skill 会在运行时自动检查 GitHub CLI 和网络访问。若 Codex 明确报告沙箱阻止 `gh` 访问 GitHub，可临时启用本次会话的网络权限：
+
+```bash
+codex -c sandbox_workspace_write.network_access=true
+```
+
+其他 Agent 通常不需要这项设置。
 
 ## 安全边界
 
