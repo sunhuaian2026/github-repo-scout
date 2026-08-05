@@ -327,10 +327,10 @@ def build_platform_plan(platform: str, prefer: str = "sdk") -> dict[str, Any]:
         "relevance_terms": [normalized, f"{normalized} api", f"{normalized} scraper"],
         "constraint_terms": [],
         "queries": [
-            {"role": "api-wrapper", "phase": "base", "query": f'{normalized} API wrapper in:name,description,topics archived:false'},
-            {"role": "cli-scraper", "phase": "base", "query": f'{normalized} scraper CLI in:name,description,topics archived:false'},
-            {"role": "mcp", "phase": "base", "query": f'{normalized} MCP in:name,description,topics archived:false'},
-            {"role": "agent-skill", "phase": "base", "query": f'{normalized} skill in:name,description,topics archived:false'},
+            {"role": "api-wrapper", "phase": "base", "query": f'{normalized} API wrapper in:name,description,topics archived:false is:public'},
+            {"role": "cli-scraper", "phase": "base", "query": f'{normalized} scraper CLI in:name,description,topics archived:false is:public'},
+            {"role": "mcp", "phase": "base", "query": f'{normalized} MCP in:name,description,topics archived:false is:public'},
+            {"role": "agent-skill", "phase": "base", "query": f'{normalized} skill in:name,description,topics archived:false is:public'},
         ],
     }
 
@@ -351,6 +351,8 @@ def select_deep_review(
     selected: list[dict[str, Any]] = []
     seen: set[str] = set()
     for role in route_priority or DEFAULT_ROUTE_PRIORITY:
+        if len(selected) >= maximum:
+            break
         matches = [
             item for item in candidates
             if any(match.get("role") == role for match in item.get("matches") or [])
@@ -450,11 +452,17 @@ def normalize_search_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def ensure_visibility_scope(query: str) -> str:
+    if re.search(r"(?:^|\s)(?:is|visibility):(public|private|internal)(?:\s|$)", query, re.IGNORECASE):
+        return query
+    return f"{query} is:public"
+
+
 def search_rows(
     client: GitHubClient, query: str, limit: int, timeout: int,
 ) -> tuple[list[dict[str, Any]], dict[str, str] | None]:
     del timeout
-    endpoint = f"search/repositories?q={urlparse.quote_plus(query)}&per_page={min(limit, 100)}"
+    endpoint = f"search/repositories?q={urlparse.quote_plus(ensure_visibility_scope(query))}&per_page={min(limit, 100)}"
     data, kind, message = client.json(endpoint)
     if kind:
         return [], error(query, kind, message or "GitHub repository search failed")

@@ -154,6 +154,7 @@ class AdaptiveSearchTests(unittest.TestCase):
         self.assertTrue(payload["recommendation_eligible"])
         self.assertEqual(payload["candidates"][0]["fullName"], "example/public-tool")
         self.assertEqual(len([path for path in requests if path.startswith("/search/repositories?")]), 2)
+        self.assertTrue(all("is%3Apublic" in path for path in requests if path.startswith("/search/repositories?")))
 
     def test_low_yield_expansion_is_rejected(self) -> None:
         rows = [
@@ -255,7 +256,14 @@ class AdaptiveSearchTests(unittest.TestCase):
         self.assertEqual(first["plan_type"], "platform_tools")
         self.assertEqual([item["role"] for item in first["queries"]], ["api-wrapper", "cli-scraper", "mcp", "agent-skill"])
         self.assertTrue(all(item["phase"] == "base" for item in first["queries"]))
+        self.assertTrue(all("is:public" in item["query"] for item in first["queries"]))
         self.assertEqual(MODULE.build_platform_plan("reddit", "agent")["route_priority"][0], "mcp")
+
+    def test_search_visibility_defaults_to_public_without_overriding_explicit_scope(self) -> None:
+        self.assertEqual(MODULE.ensure_visibility_scope("ocr archived:false"), "ocr archived:false is:public")
+        self.assertEqual(MODULE.ensure_visibility_scope("ocr is:public"), "ocr is:public")
+        self.assertEqual(MODULE.ensure_visibility_scope("ocr is:private"), "ocr is:private")
+        self.assertEqual(MODULE.ensure_visibility_scope("ocr visibility:internal"), "ocr visibility:internal")
 
     def test_base_query_failure_fails_closed(self) -> None:
         plan = {
@@ -311,6 +319,22 @@ class AdaptiveSearchTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual([item["reason"] for item in first[:4]], ["top_api-wrapper", "top_mcp", "top_agent-skill", "top_cli-scraper"])
         self.assertEqual(len(first), 5)
+
+    def test_deep_review_selection_respects_maximum_while_covering_routes(self) -> None:
+        candidates = []
+        for index, role in enumerate(("api-wrapper", "mcp", "agent-skill", "cli-scraper"), start=1):
+            candidates.append({
+                "fullName": f"example/{role}",
+                "licenseStatus": "known",
+                "selectionScore": 1 / index,
+                "matches": [{"role": role, "phase": "base", "rank": index}],
+            })
+        selected = MODULE.select_deep_review(candidates, maximum=3)
+        self.assertEqual(len(selected), 3)
+        self.assertEqual(
+            [item["reason"] for item in selected],
+            ["top_api-wrapper", "top_mcp", "top_agent-skill"],
+        )
 
     def test_decision_validator_blocks_unstable_and_false_free_recommendations(self) -> None:
         payload = {

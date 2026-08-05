@@ -194,7 +194,7 @@ class InstallerCliTests(unittest.TestCase):
 
             upgrade = self.run_installer(home, "--agent", "hermes")
             self.assertEqual(upgrade.returncode, 0, upgrade.stderr)
-            self.assertIn('version: "2.4.0"', skill.read_text(encoding="utf-8"))
+            self.assertIn('version: "2.4.1"', skill.read_text(encoding="utf-8"))
 
     def test_modified_managed_copy_still_requires_accept_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

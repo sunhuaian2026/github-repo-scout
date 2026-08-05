@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients；已验证 Hermes Agent、Codex CLI、Claude Code；需要 Python 3.10+ 和 GitHub 网络访问；公开仓库无需 GitHub 登录。
 metadata:
   author: Sun Hongjun (16414766@qq.com)
-  version: "2.4.0"
+  version: "2.4.1"
 ---
 
 # GitHub Repo Scout
@@ -16,7 +16,7 @@ metadata:
 
 先确定当前加载的 `SKILL.md` 所在目录，以下写作 `<skill-dir>`。所有支持文件都相对 `<skill-dir>` 解析，不相对用户当前工作目录；`<temporary-directory>` 使用当前系统可写的临时目录。
 
-默认直接运行 `doctor` 检查 GitHub REST API 和剩余额度。公开仓库默认匿名读取；若环境中存在 `GH_TOKEN`、`GITHUB_TOKEN` 或已登录的 `gh`，自动使用认证额度。只有访问私有仓库时才要求认证。网络仍不可用时不得用随机网页搜索替代候选发现后继续推荐。
+默认直接运行 `doctor` 检查 GitHub REST API 和剩余额度。公共选型查询统一使用 `is:public`；若环境中存在 `GH_TOKEN`、`GITHUB_TOKEN` 或已登录的 `gh`，只提升 REST API 额度。只有明确审查私有仓库时才使用认证访问。网络仍不可用时不得用随机网页搜索替代候选发现后继续推荐。
 
 ## 能力边界
 

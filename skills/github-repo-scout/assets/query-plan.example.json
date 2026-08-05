@@ -12,27 +12,27 @@
     {
       "role": "category",
       "phase": "base",
-      "query": "\"semantic code search\" in:name,description,topics archived:false"
+      "query": "\"semantic code search\" in:name,description,topics archived:false is:public"
     },
     {
       "role": "task",
       "phase": "base",
-      "query": "\"code search\" local in:name,description,topics archived:false"
+      "query": "\"code search\" local in:name,description,topics archived:false is:public"
     },
     {
       "role": "artifact",
       "phase": "base",
-      "query": "code embeddings search in:name,description,topics archived:false"
+      "query": "code embeddings search in:name,description,topics archived:false is:public"
     },
     {
       "role": "readme-local",
       "phase": "expansion",
-      "query": "\"semantic code search\" local in:readme archived:false"
+      "query": "\"semantic code search\" local in:readme archived:false is:public"
     },
     {
       "role": "topic",
       "phase": "expansion",
-      "query": "topic:code-search semantic archived:false"
+      "query": "topic:code-search semantic archived:false is:public"
     }
   ]
 }

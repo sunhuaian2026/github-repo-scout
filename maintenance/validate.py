@@ -80,13 +80,19 @@ def validate_static() -> list[str]:
         errors.append("root install.py entrypoint is required")
     if "python3 install.py" not in (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"):
         errors.append("README must document the one-command installer")
-    if "version: \"2.4.0\"" not in raw_frontmatter:
-        errors.append("metadata.version must be 2.4.0")
+    if "version: \"2.4.1\"" not in raw_frontmatter:
+        errors.append("metadata.version must be 2.4.1")
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-    if "公开仓库默认匿名读取" not in text or "公开仓库默认匿名读取" not in readme:
-        errors.append("Skill and README must document anonymous public-repository access")
+    if "is:public" not in text or "is:public" not in readme:
+        errors.append("Skill and README must document invariant public-repository search scope")
     if "- 已完成 `gh auth login`" in readme or "需要 Python 3.10+、GitHub CLI gh" in compatibility:
         errors.append("GitHub CLI authentication must not be a runtime prerequisite")
+    agent_install = readme.find("### 方式一：让 Agent 安装（推荐）")
+    npx_install = readme.find("### 方式二：通过 npx 安装")
+    if agent_install < 0 or npx_install < 0 or agent_install > npx_install:
+        errors.append("README must put the concise Agent install flow before npx")
+    if "请克隆 https://github.com/sunhuaian2026/github-repo-scout，并用 `install.py` 只安装到当前 Agent；完成后告诉我版本和路径。" not in readme:
+        errors.append("README must keep the approved concise Agent install prompt")
     if "## 不可信内容边界" not in text or "第三方不可信数据" not in text:
         errors.append("SKILL.md must define the third-party untrusted-content boundary")
     scoring = (SKILL_ROOT / "references" / "scoring.md").read_text(encoding="utf-8")
@@ -186,7 +192,8 @@ def validate_smoke() -> list[str]:
         errors.append("platform-plan did not emit valid JSON")
     else:
         roles = [item.get("role") for item in plan_payload.get("queries", [])]
-        if platform_plan.returncode != 0 or roles != ["api-wrapper", "cli-scraper", "mcp", "agent-skill"]:
+        queries = [item.get("query", "") for item in plan_payload.get("queries", [])]
+        if platform_plan.returncode != 0 or roles != ["api-wrapper", "cli-scraper", "mcp", "agent-skill"] or not all("is:public" in query for query in queries):
             errors.append(f"platform-plan is invalid: {roles}")
 
     decision = run([
